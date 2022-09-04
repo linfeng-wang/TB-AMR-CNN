@@ -1,3 +1,4 @@
+#%%
 import pandas as pd
 import glob
 import numpy as np
@@ -5,6 +6,7 @@ from Bio import SeqIO
 
 # local import
 import util
+#%%
 
 
 def read_sequence_data(dir_path):

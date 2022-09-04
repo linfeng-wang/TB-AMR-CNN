@@ -1,12 +1,16 @@
+#%%
 import pandas as pd
+
 import tensorflow as tf
+
+#%%
 import matplotlib.pyplot as plt
 import pathlib
 from sklearn.model_selection import train_test_split
 
 import util
 import model
-
+#%%
 # define constants
 EPOCHS = 100
 # set random seed for improved reproducibility (perfect reproducibility with GPUs is
@@ -31,12 +35,14 @@ DRUGS = util.DRUGS
 assert set(DRUGS) == set(res_all.columns)
 N_drugs = len(DRUGS)
 
+#%%
+
 # load the CRyPTIC samples as test data
 seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 # make sure the loci are in the same order as in the training data
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
 
-# split the training data into train and validation sets. To achieve some stratification
+# split the training data into train and validation sets. To achieve some stratification - why do we need stratification
 # by resistance phenotype, sort the drugs inversely by the number of observations and
 # designate each sample with the least common drug it has a phenotype for.
 drugs_sorted = res_all.isna().sum(axis=0).sort_values(ascending=False).index
@@ -55,6 +61,7 @@ train_idx, val_idx = train_test_split(
     stratify=least_common_drug_per_sample,
 )
 
+#%%
 
 # we will need tf datasets and one-hot encoded sequences
 def get_seq_and_phen(seqs, res):
@@ -65,7 +72,10 @@ def get_seq_and_phen(seqs, res):
     for idx, phen in res.iterrows():
         yield seqs.loc[idx].str.cat(), phen
 
+#%%
+get_seq_and_phen(seqs_df, res_all.loc[train_idx])
 
+#%%
 # create the train tf dataset
 train_ds = tf.data.Dataset.from_generator(
     lambda: get_seq_and_phen(seqs_df, res_all.loc[train_idx]),
@@ -87,6 +97,8 @@ val_ds = val_ds.map(
     lambda seq, phen: (util.preprocessing.seq_to_one_hot(seq), phen),
     num_parallel_calls=16,
 )
+
+
 # similarly, prepare the cryptic dataset for testing later
 ds_cryptic = tf.data.Dataset.from_generator(
     lambda: get_seq_and_phen(seqs_cryptic, res_cryptic),
@@ -97,6 +109,8 @@ ds_cryptic = ds_cryptic.map(
     lambda seq, phen: (util.preprocessing.seq_to_one_hot(seq), phen),
     num_parallel_calls=16,
 )
+
+#%%
 
 # define the model
 m = model.get_model(
@@ -113,7 +127,7 @@ m = model.get_model(
 
 # define the loss function (BCE; weighted or unweighted)
 if WEIGHTED_LOSS:
-    # get weights inversely proportional to the number of observations per drug
+    # get weights inversely proportional to the number of observations per drug  #why???
     weights = N_samples / (N_samples - res_all.isna().sum(0))
     weights /= weights.min()
     weights = tf.constant(weights, dtype="float32")
@@ -152,7 +166,7 @@ h1 = m.fit(
     validation_data=val_ds.padded_batch(batch_size).cache().prefetch(prefetch_num),
     callbacks=[
         tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="loss", factor=0.5, patience=5, min_lr=0.0001
+            monitor="loss", factor=0.5, patience=5, min_lr=0.0001 #is it reducing the learning rate by 0.5
         ),
         tf.keras.callbacks.ModelCheckpoint(
             f"{model_dir}/model." "epoch-{epoch:03d}.savedmodel"
@@ -174,4 +188,7 @@ ax_2.set_yscale("log")
 ax.set_ylim(ax.get_ylim()[0], history["loss"][0])
 ax.grid(axis="x")
 fig.tight_layout()
+fig.show()
 fig.savefig(f"{model_dir}/training-history.png")
+
+# %%
