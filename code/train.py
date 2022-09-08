@@ -36,11 +36,11 @@ assert set(DRUGS) == set(res_all.columns)
 N_drugs = len(DRUGS)
 
 #%%
-
 # load the CRyPTIC samples as test data
 seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 # make sure the loci are in the same order as in the training data
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
+#%%
 
 # split the training data into train and validation sets. To achieve some stratification - why do we need stratification
 # by resistance phenotype, sort the drugs inversely by the number of observations and
@@ -52,6 +52,7 @@ for idx, row in res_all.iterrows():
         if not pd.isna(row[drug]):
             least_common_drug_per_sample[idx] = drug
             break
+#%%
 
 # use this now to create the stratified train/val split
 train_idx, val_idx = train_test_split(
@@ -87,6 +88,9 @@ train_ds = train_ds.map(
     lambda seq, phen: (util.preprocessing.seq_to_one_hot(seq), phen),
     num_parallel_calls=16,
 )
+#%%
+train_ds
+#%%
 # now the same for validation
 val_ds = tf.data.Dataset.from_generator(
     lambda: get_seq_and_phen(seqs_df, res_all.loc[val_idx]),

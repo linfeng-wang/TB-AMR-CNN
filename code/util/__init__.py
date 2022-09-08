@@ -4,12 +4,14 @@ from . import load_data
 from . import preprocessing
 from . import custom_metrics
 
+#%%
 # define paths and other constants
 _PKG_ROOT_PATH = pathlib.Path(__file__).resolve().parent.parent.parent #the parent of parent of parent path if the current file
 CRYPTIC_DATA_PATH = f"{_PKG_ROOT_PATH}/data/cryptic"
 MAIN_DATA_PATH = f"{_PKG_ROOT_PATH}/data/main"
 SAVED_MODELS_PATH = f"{_PKG_ROOT_PATH}/saved_models"
 
+#%%
 DRUGS = [
     "AMIKACIN",
     "CAPREOMYCIN",
@@ -25,3 +27,5 @@ DRUGS = [
     "RIFAMPICIN",
     "STREPTOMYCIN",
 ]
+
+# %%
