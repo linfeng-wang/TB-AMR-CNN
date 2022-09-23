@@ -1,5 +1,7 @@
 # input data
 data
+*.fasta
+*.npy
 
 # internal validation scripts / notebooks
 eval*
