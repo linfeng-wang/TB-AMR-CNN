@@ -32,9 +32,9 @@ def conv_block1(in_f, out_f, kernel_size, conv_dropout_rate, padding):
     return nn.Sequential(
         nn.Dropout(p=conv_dropout_rate, inplace=False),
         nn.Conv1d(in_f, out_f, kernel_size = kernel_size, padding = padding),
-        nn.BatchNorm1d(3),
+        nn.BatchNorm1d(out_f),
         nn.ReLU(),
-        nn.MaxPool1d(3),  #check here
+        nn.MaxPool1d(3, stride = 1),  #check here
 
         )
     
@@ -42,8 +42,12 @@ def dense_block1(in_f, out_f, dense_dropout_rate, *args, **kwargs):
     return nn.Sequential(
         nn.Dropout(p=dense_dropout_rate, inplace=False),
         nn.Linear(in_f, out_f, *args, **kwargs),
-        nn.BatchNorm1d(3),
+        nn.BatchNorm1d(1),
         nn.ReLU(),
+        nn.Dropout(p=dense_dropout_rate, inplace=False),
+        nn.Linear(out_f, out_f, *args, **kwargs),
+        nn.BatchNorm1d(1),
+        nn.ReLU()
     )
 
 class raw_seq_model(nn.Module):
@@ -70,31 +74,57 @@ class raw_seq_model(nn.Module):
         self.conv_block1 = conv_block1(num_filters, num_filters, kernel_size=3, padding=1, conv_dropout_rate=conv_dropout_rate)
         self.dense_block1 = dense_block1(num_filters, 256, dense_dropout_rate)
 
-        self.linear_logit = nn.Linear(num_filters, n_classes) 
-        self.linear_no_logit = nn.Linear(num_filters, n_classes) 
+        self.linear_logit = nn.Linear(256, n_classes) 
+        self.linear_no_logit = nn.Linear(256, n_classes) 
         self.predictions = nn.Sigmoid()
         #self.global_maxpool = F.max_pool2d(x, kernel_size=x.size()[2:])
 
 
     def forward(self, x):
+        # print("Input tensor size:", x.size())
         x = self.conv_layer1(x)
+        # print("tensor size after conv_layer1:", x.size())
+
         x = self.batch_norm(x)
+        # print("tensor size after batch_norm:", x.size())
+
         x = self.relu(x)
         
+        # x = self.maxpool(x)
+        # print("tensor size after first max_pool:", x.size())
+
         for i in range(1, self.num_conv_layers + 1):
             x = self.conv_block1(x)
-                    
-        x = F.max_pool2d(x, x.size()[2:]) #global_maxpool
+                        
+        # print("tensor size after conv_block1:", x.size())
+
+        x = F.max_pool1d(x, kernel_size=x.size()[2:]) #global_maxpool
+        #x = self.maxpool(x)
+        # x = x.squeeze(dim = -1)
+        # x = torch.t(x)
+        x = x.permute(0, 2, 1)
+
+        # print("tensor size after global_maxpool:", x.size())
+
+        # for i in range(1, self.num_dense_layers + 1):
+            # x = self.dense_block1(x)
         
-        for i in range(1, self.num_dense_layers + 1):
-            x = self.dense_block1(x)
+        # for i in range(1, self.num_dense_layers + 1):
+        for layer in self.dense_block1:
+            x = layer(x)
+            # print(x.size())
+        
+        # print("tensor size after dense_block:", x.size())
 
         if self.return_logits:
             prediction = self.linear_logit(x)
-        
+            # print("tensor size after dense layer:", x.size())
+
         else:
-            prediction = self.linear_logit(x)
-            prediction = self.predictions = nn.Sigmoid(prediction)
+            prediction = self.linear_no_logit(x)
+            prediction = self.predictions(prediction)
+            # print("tensor size after dense layer:", x.size())
+
         return prediction
         
 

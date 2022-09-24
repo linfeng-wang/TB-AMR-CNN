@@ -34,6 +34,7 @@ import model_torch
 model_torch = reload(model_torch)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
@@ -71,15 +72,20 @@ class RawReadDataset(Dataset):
 
 dataset = RawReadDataset(list(seqs_df_agg), res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 
-
 def masked_BCE_from_logits(y_true, y_pred_logits):
     """
     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
     """
     non_nan_ids = torch.argwhere(~torch.isnan(y_true))
     non_nan_ids = torch.flatten(non_nan_ids)
+    y_pred_logits = torch.squeeze(y_pred_logits)
     y_true_non_nan = torch.index_select(y_true,0, non_nan_ids)
     y_pred_logits_non_nan = torch.index_select(y_pred_logits,0, non_nan_ids)
+    # print(non_nan_ids)
+    # print(y_true.size())
+    # print(y_pred_logits.size())
+    # print(y_true_non_nan)
+    # print(y_pred_logits_non_nan)
     loss = torch.nn.MultiLabelSoftMarginLoss()
     return loss(y_true_non_nan, y_pred_logits_non_nan)
 
@@ -99,15 +105,27 @@ def one_hot_torch(seq):
     arr[seq == acgt_bytes[3], 3] = 1
     return arr
 
+#%%
+# Testing conditions
+# device = 'cpu'
+# import os
+# 
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "0"
+# model_torch = reload(model_torch)
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 #%%
+#reloading model and running
 # hyper-parameters
 def make_train_step(model, loss_fn, optimizer):
     def train_step(x, y):
         model.train()
-        print(type(x))
+        x = x.float()
         yhat = model(x)
         loss = loss_fn(y, yhat)
+        print(loss)
+        loss = torch.Tensor(loss)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -121,9 +139,9 @@ train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 n_epochs = 100
 training_losses = []
 validation_losses = []
-print(model.state_dict())
+# print(model.state_dict())
 
-#%% training
+# training
 
 for epoch in range(n_epochs):
     batch_losses = []
@@ -132,6 +150,7 @@ for epoch in range(n_epochs):
         x_batch = one_hot_torch(x_batch[0])
         x_batch = x_batch[None, :]
         x_batch = x_batch.permute(0, 2, 1).to(device)
+        print(x_batch.size())
         y_batch = torch.Tensor(y_batch).to(device)
         loss = train_step(x_batch, y_batch)
         batch_losses.append(loss)
@@ -151,7 +170,19 @@ for epoch in range(n_epochs):
         validation_losses.append(validation_loss)
 
     print(f"[{epoch+1}] Training loss: {training_loss:.3f}\t Validation loss: {validation_loss:.3f}")
-
+    break
 print(model.state_dict())
 # %%
 
+next(iter(train_loader))[0]
+x_test = one_hot_torch(next(iter(train_loader))[0][0])
+
+# %%
+x_test = x_test[None, :]
+print(x_test.size())
+
+x_test
+
+#%%
+device
+# %%
