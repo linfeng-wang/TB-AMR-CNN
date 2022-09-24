@@ -92,8 +92,8 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
 
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
 
-train_loader = DataLoader(dataset=train_dataset, batch_size=1)
-val_loader = DataLoader(dataset=val_dataset, batch_size=1)
+train_loader = DataLoader(dataset=train_dataset, batch_size=128)
+val_loader = DataLoader(dataset=val_dataset, batch_size=128)
 
 def one_hot_torch(seq):
     seq = torch.ByteTensor(list(bytes(seq, "utf-8")))
@@ -189,3 +189,28 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history.csv")
+
+#%%
+x_ = next(iter(train_loader))[0]
+len(x_)
+# %%
+len(x_[1])
+# %%
+max_len = len(max(x_, key=len))
+list_x_ = list(x_)
+
+# %%
+for i, x in enumerate(list_x_):
+    list_x_[i] = x + "N"*(max_len-len(x))
+    
+#%%
+bla = "AAA"
+bla + "BBB"
+# %%
+len(x_[0])
+# %%
+# %%
+len(list_x_[0])
+# %%
+list_x_[0]
+# %%
