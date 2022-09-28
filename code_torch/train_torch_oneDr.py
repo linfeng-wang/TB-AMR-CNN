@@ -72,6 +72,7 @@ class RawReadDataset(Dataset):
 
 dataset = RawReadDataset(list(seqs_df_agg), res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 
+#%%
 def masked_BCE_from_logits(y_true, y_pred_logits):
     """
     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
@@ -79,7 +80,6 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     b_loss = []
     loss = torch.nn.MultiLabelSoftMarginLoss()
     acc_list = []
-    accuracy = Accuracy()
     for i in range(0,len(y_true)): # this loop is done because after removal of nan, the tensor would have ben rugged
         non_nan_ids = torch.argwhere(~torch.isnan(y_true[i]))
         non_nan_ids = torch.flatten(non_nan_ids)
@@ -100,10 +100,11 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     b_loss = torch.Tensor(b_loss)
     return torch.mean(b_loss), np.mean(acc_list)
 
+#%%
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
 
-train_loader = DataLoader(dataset=train_dataset, batch_size=32)
-val_loader = DataLoader(dataset=val_dataset, batch_size=32)
+train_loader = DataLoader(dataset=train_dataset, batch_size=128)
+val_loader = DataLoader(dataset=val_dataset, batch_size=128)
 
 def one_hot_torch(seq):
     oh = []
@@ -124,6 +125,11 @@ def my_padding(seq_tuple):
     for i, x in enumerate(list_x_):
         list_x_[i] = x + "N"*(max_len-len(x))
     return list_x_
+
+#%%
+# Testing conditions
+device = 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 #%%
@@ -240,7 +246,7 @@ fig.tight_layout()
 fig.show()
 
 fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss.png")
-
+#%%
 fig, ax = plt.subplots()
 x = np.arange(1, 3+1, 1)
 ax.plot(x, history["training_acc"],label='Training')
@@ -258,4 +264,3 @@ fig.tight_layout()
 fig.show()
 
 fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy.png")
-

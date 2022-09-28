@@ -118,27 +118,31 @@ def one_hot_torch(seq):
 #%%
 #reloading model and running
 # hyper-parameters
-def make_train_step(model, loss_fn, optimizer):
+def make_train_step(model, loss_fn, optimizer, scheduler):
     def train_step(x, y):
         model.train()
         x = x.float()
         yhat = model(x)
         loss = loss_fn(y, yhat)
-        print(loss)
         loss = torch.Tensor(loss)
         loss.backward()
         optimizer.step()
+        lrs.append(optimizer.param_groups[0]["lr"])
+        scheduler.step(0) # 0 used for learning rate policy 'plateau'
         optimizer.zero_grad()
         return loss.item()
     return train_step
 
 model = model_torch.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-1)
-train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-1,betas=(0.9,0.999),eps=1e-08,weight_decay=0,amsgrad=False)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=64,min_lr=0.0001, verbose=True)
+train_step = make_train_step(model, masked_BCE_from_logits, optimizer, scheduler)
 n_epochs = 100
 training_losses = []
 validation_losses = []
+lrs = []
+
 # print(model.state_dict())
 
 # training
@@ -150,42 +154,55 @@ for epoch in range(n_epochs):
         x_batch = one_hot_torch(x_batch[0])
         x_batch = x_batch[None, :]
         x_batch = x_batch.permute(0, 2, 1).to(device)
-        print(x_batch.size())
         y_batch = torch.Tensor(y_batch).to(device)
         loss = train_step(x_batch, y_batch)
         batch_losses.append(loss)
+        # break
+    #scheduler.step(0)
     training_loss = np.mean(batch_losses)
     training_losses.append(training_loss)
 
     with torch.no_grad():
         val_losses = []
         for x_val, y_val in val_loader:
-            x_val = one_hot_torch(x_val[0]).to(device)
+            x_val = one_hot_torch(x_val[0])
+            x_val = x_val.float()
+            x_val = x_val[None, :]
+            x_val = x_val.permute(0, 2, 1).to(device)
             y_val = torch.Tensor(y_val).to(device)
             model.eval()
             yhat = model(x_val)
             val_loss = masked_BCE_from_logits(y_val, yhat).item()
             val_losses.append(val_loss)
+            # break
         validation_loss = np.mean(val_losses)
         validation_losses.append(validation_loss)
 
     print(f"[{epoch+1}] Training loss: {training_loss:.3f}\t Validation loss: {validation_loss:.3f}")
+    # break
+# print(model.state_dict())
 
-print(model.state_dict())
-# %%
-d = {'Month':training_losses,'Day':validation_losses}
-history = pd.DataFrame(d,columns=['training_losses','validation_losses'])
-pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history.csv")
+#%%
+d = {'training_losses':training_losses,'validation_losses':validation_losses}
+history = pd.DataFrame.from_dict(d)
+pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history.csv",index=False)
 
 # plot the training history
 fig, ax = plt.subplots()
-ax.plot(history["training_losses"])
-ax.plot(history["validation_losses"])
-ax_2 = ax.twinx()
+x = np.arange(1, 3+1, 1)
+ax.plot(x, history["training_losses"],label='Training')
+ax.plot(x, history["validation_losses"],label='Validation')
+ax.legend()
+ax.set_xlabel("Number of Epoch")
+ax.set_ylabel("Loss")
+ax.set_xticks(np.arange(min(x), max(x)+1, 1.0))
+# ax_2 = ax.twinx()
 # ax_2.plot(history["lr"], "k--", lw=1)
-ax_2.set_yscale("log")
-ax.set_ylim(ax.get_ylim()[0], history["training_losses"][0])
+# ax_2.set_yscale("log")
+# ax.set_ylim(ax.get_ylim()[0], history["training_losses"][0])
 ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history.csv")
+
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history.png")
+# %%
