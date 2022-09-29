@@ -1,5 +1,4 @@
-#batch input model
-
+#batch input model only using KatG to predict isoniazid
 #%%
 from pyexpat import model
 import statistics
@@ -56,12 +55,12 @@ def dense_block1(in_f, out_f, dense_dropout_rate, *args, **kwargs):
 class raw_seq_model(nn.Module):
     def __init__(self,
                 in_channels=4,                  
-                n_classes=13, 
+                n_classes=1, 
                 num_filters = 64,
                 filter_length=25,
                 num_conv_layers=2,     
                 num_dense_layers=2,
-                conv_dropout_rate = 0.3,
+                conv_dropout_rate = 0.0,
                 dense_dropout_rate = 0.2,
                 bias = True, 
                 return_logits = False):
@@ -79,7 +78,7 @@ class raw_seq_model(nn.Module):
 
         # self.linear_logit = nn.Conv1d(256, n_classes, kernel_size =1) 
         self.linear_logit = nn.Linear(256, n_classes) 
-        self.linear_no_logit = nn.Linear(64, n_classes) 
+        self.linear_no_logit = nn.Linear(256, n_classes) 
         self.predictions = nn.Sigmoid()
         #self.global_maxpool = F.max_pool2d(x, kernel_size=x.size()[2:])
 
@@ -89,33 +88,33 @@ class raw_seq_model(nn.Module):
         x = self.conv_layer1(x)
         # print("tensor size after conv_layer1:", x.size())
 
-        # x = self.batch_norm(x)
-        # # print("tensor size after batch_norm:", x.size())
+        x = self.batch_norm(x)
+        # print("tensor size after batch_norm:", x.size())
 
-        # x = self.relu(x)
+        x = self.relu(x)
         
-        # x = self.maxpool(x)
+        x = self.maxpool(x)
         # print("tensor size after first max_pool:", x.size())
 
-        # for i in range(1, self.num_conv_layers + 1):
-        #     x = self.conv_block1(x)
+        for i in range(1, self.num_conv_layers + 1):
+            x = self.conv_block1(x)
                         
-        # # print("tensor size after conv_block1:", x.size())
+        # print("tensor size after conv_block1:", x.size())
 
-        # # x = x.permute(1, 0, 2)
+        # x = x.permute(1, 0, 2)
         x = F.max_pool1d(x, kernel_size=x.size()[2:]) #global_maxpool
-        # # x = self.maxpool(x)
+        # x = self.maxpool(x)
         x = x.squeeze(dim = -1)
         # x = torch.t(x)
         # 
 
-        #print("tensor size after global_maxpool:", x.size())
+        # print("tensor size after global_maxpool:", x.size())
 
         # for i in range(1, self.num_dense_layers + 1):
         #     x = self.dense_block1(x)
         
-        # for layer in self.dense_block1:
-        #     x = layer(x)
+        for layer in self.dense_block1:
+            x = layer(x)
             # print(x.size())
         
         # print("tensor size after dense_block:", x.size())

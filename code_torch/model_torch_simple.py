@@ -1,3 +1,4 @@
+#batch input model only using KatG to predict isoniazid
 #%%
 from pyexpat import model
 import statistics
@@ -34,7 +35,6 @@ def conv_block1(in_f, out_f, kernel_size, conv_dropout_rate, padding):
         nn.BatchNorm1d(out_f),
         nn.ReLU(),
         nn.MaxPool1d(3, stride = 1),  #check here
-
         )
     
 def dense_block1(in_f, out_f, dense_dropout_rate, *args, **kwargs):
@@ -54,7 +54,7 @@ def dense_block1(in_f, out_f, dense_dropout_rate, *args, **kwargs):
 class raw_seq_model(nn.Module):
     def __init__(self,
                 in_channels=4,                  
-                n_classes=13, 
+                n_classes=1, 
                 num_filters = 64,
                 filter_length=25,
                 num_conv_layers=2,     
@@ -85,7 +85,7 @@ class raw_seq_model(nn.Module):
     def forward(self, x):
         # print("Input tensor size:", x.size())
         x = self.conv_layer1(x)
-        # print("tensor size after conv_layer1:", x.size())
+        #print("tensor size after conv_layer1:", x.size())
 
         x = self.batch_norm(x)
         # print("tensor size after batch_norm:", x.size())
@@ -96,7 +96,7 @@ class raw_seq_model(nn.Module):
         # print("tensor size after first max_pool:", x.size())
 
         for i in range(1, self.num_conv_layers + 1):
-            x = self.conv_block1(x)
+           x = self.conv_block1(x)
                         
         # print("tensor size after conv_block1:", x.size())
 
@@ -107,7 +107,7 @@ class raw_seq_model(nn.Module):
         # x = torch.t(x)
         # 
 
-        # print("tensor size after global_maxpool:", x.size())
+        #print("tensor size after global_maxpool:", x.size())
 
         # for i in range(1, self.num_dense_layers + 1):
         #     x = self.dense_block1(x)
@@ -131,7 +131,7 @@ class raw_seq_model(nn.Module):
             # print("tensor size after dense layer:", prediction.size())
 
             prediction = self.predictions(prediction)
-            # print("tensor size after sigmoid layer:", prediction.size())
+            #print("tensor size after sigmoid layer:", prediction.size())
             
 
         return prediction

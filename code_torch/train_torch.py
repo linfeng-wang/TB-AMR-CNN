@@ -128,15 +128,15 @@ def make_train_step(model, loss_fn, optimizer, scheduler):
         loss.backward()
         optimizer.step()
         lrs.append(optimizer.param_groups[0]["lr"])
-        scheduler.step(0) # 0 used for learning rate policy 'plateau'
+        #scheduler.step(0) # 0 used for learning rate policy 'plateau'
         optimizer.zero_grad()
         return loss.item()
     return train_step
 
 model = model_torch.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-1,betas=(0.9,0.999),eps=1e-08,weight_decay=0,amsgrad=False)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=64,min_lr=0.0001, verbose=True)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01,betas=(0.9,0.999),eps=1e-08,weight_decay=0,amsgrad=False)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=0.0001, verbose=True)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer, scheduler)
 n_epochs = 100
 training_losses = []
@@ -175,6 +175,7 @@ for epoch in range(n_epochs):
             val_loss = masked_BCE_from_logits(y_val, yhat).item()
             val_losses.append(val_loss)
             # break
+        scheduler.step(val_loss)
         validation_loss = np.mean(val_losses)
         validation_losses.append(validation_loss)
 

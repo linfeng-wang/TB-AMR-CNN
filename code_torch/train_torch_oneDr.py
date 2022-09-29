@@ -29,13 +29,14 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 from importlib import reload
 import util
-import model_torch_batch
+import model_torch_oneDr
 from torchmetrics import Accuracy
 
-model_torch_batch = reload(model_torch_batch)
+model_torch_oneDr = reload(model_torch_oneDr)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+torch.manual_seed(88)
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
@@ -52,12 +53,29 @@ seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
 
 # merging all columns of list into one
-separator = "N"*30
-seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-res_all_combined = res_all.values.tolist()
+# separator = "N"*30
+# seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
+# res_all_combined = res_all.values.tolist()
 
-seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-res_cryptic_combined = res_cryptic.values.tolist()
+train_frames = [seqs_df['KatG'], res_all['ISONIAZID']]
+train_data = pd.concat(train_frames, axis = 1)
+train_data = train_data.dropna()
+train_data = train_data.reset_index(drop=True)
+
+seqs_df_agg = train_data["KatG"].tolist()
+res_all_combined = train_data["ISONIAZID"].tolist()
+
+
+# seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
+# res_cryptic_combined = res_cryptic.values.tolist()
+
+val_frames = [seqs_cryptic['KatG'], res_cryptic['ISONIAZID']]
+val_data = pd.concat(val_frames, axis = 1)
+val_data = val_data.dropna()
+val_data = val_data.reset_index(drop=True)
+
+seqs_cryptic_agg = val_data["KatG"].tolist()
+res_cryptic_combined = val_data["ISONIAZID"].tolist()
 
 class RawReadDataset(Dataset):
     def __init__(self, x, y):
@@ -70,7 +88,7 @@ class RawReadDataset(Dataset):
     def __len__(self):
         return len(self.x)
 
-dataset = RawReadDataset(list(seqs_df_agg), res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
+dataset = RawReadDataset(seqs_df_agg, res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 
 #%%
 def masked_BCE_from_logits(y_true, y_pred_logits):
@@ -78,29 +96,34 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
     """
     b_loss = []
-    loss = torch.nn.MultiLabelSoftMarginLoss()
+    loss = nn.BCELoss()
     acc_list = []
-    for i in range(0,len(y_true)): # this loop is done because after removal of nan, the tensor would have ben rugged
-        non_nan_ids = torch.argwhere(~torch.isnan(y_true[i]))
-        non_nan_ids = torch.flatten(non_nan_ids)
-        # print("non_nan_ids:",non_nan_ids)
-        # print("y_true.size:",y_true.size())
-        # print("y_pred_logits.size:",y_pred_logits.size())
-        # print(y_pred_logits)
-        y_true_non_nan = torch.index_select(y_true[i],0, non_nan_ids)
-        # print("y_true_non_nan:",y_true_non_nan)
+    accuracy = Accuracy().to(device)
+  
+    # print("non_nan_ids:",non_nan_ids)
+    # print("y_true.size:",y_true.size())
+    y_pred_logits = y_pred_logits.squeeze(dim = -1)
+    y_pred_logits =  y_pred_logits.to(device)
+    y_true = torch.Tensor(y_true).to(device)
+    y_true = y_true.float()
+    y_pred_logits = y_pred_logits.float()
 
-        y_pred_logits_non_nan = torch.index_select(y_pred_logits[i],0, non_nan_ids)
-        # print(y_pred_logits_non_nan)
+    # print("y_pred_logits.size:",y_pred_logits.size())
+    # print(y_pred_logits)
+    # print(y_pred_logits_non_nan)
 
-        loss_value = loss(y_pred_logits_non_nan, y_true_non_nan)
-        b_loss.append(loss_value)
-        y_true_non_nan = y_true_non_nan.int()
-        acc_list.append(accuracy(y_pred_logits_non_nan, y_true_non_nan))
+    loss_value = loss(y_pred_logits, y_true)
+    b_loss.append(loss_value)
+    y_true = y_true.int()
+ 
+    acc_list.append(accuracy(y_pred_logits, y_true))
     b_loss = torch.Tensor(b_loss)
-    return torch.mean(b_loss), np.mean(acc_list)
+    acc_list = torch.Tensor(acc_list)
+
+    return torch.mean(b_loss), torch.mean(acc_list)
 
 #%%
+
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
 
 train_loader = DataLoader(dataset=train_dataset, batch_size=128)
@@ -126,15 +149,14 @@ def my_padding(seq_tuple):
         list_x_[i] = x + "N"*(max_len-len(x))
     return list_x_
 
+
 #%%
 # Testing conditions
-device = 'cpu'
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+#device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
-#%%
 #reloading model and running
-model_torch_batch = reload(model_torch_batch)
+model_torch_oneDr = reload(model_torch_oneDr)
 
 # hyper-parameters
 def make_train_step(model, loss_fn, optimizer):
@@ -147,17 +169,17 @@ def make_train_step(model, loss_fn, optimizer):
         loss.requires_grad_()
         loss.backward()
         optimizer.step()
-        lrs.append(optimizer.param_groups[0]["lr"])
-        scheduler.step(0) # 0 used for learning rate policy 'plateau'
+        # lrs.append(optimizer.param_groups[0]["lr"])
+        # scheduler.step(0) # 0 used for learning rate policy 'plateau'
         optimizer.zero_grad()
         return loss.item(), acc
     return train_step
 
-model = model_torch_batch.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
+model = model_torch_oneDr.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-1)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=0.0001, verbose=True)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
 n_epochs = 100
 training_losses = []
 validation_losses = []
@@ -176,12 +198,15 @@ for epoch in range(n_epochs):
         x_batch = one_hot_torch(x_batch)
         x_batch = torch.stack(x_batch, dim=1).to(device)
         x_batch = x_batch.permute(1, 2, 0).to(device)
-        y_batch = torch.stack(y_batch, dim=1).to(device)
+        # print(x_batch.size())
+        # print(y_batch.size())
+        # print(y_batch)
+        y_batch = torch.Tensor(y_batch).to(device)
 
         loss, acc = train_step(x_batch, y_batch)
         batch_losses.append(loss)
         batch_acc_train.append(acc)
-        break
+        #break
     epoch_acc_training = np.mean(batch_acc_train)
     training_acc.append(epoch_acc_training)
     training_loss = np.mean(batch_losses)
@@ -197,26 +222,30 @@ for epoch in range(n_epochs):
             x_val = x_val.float()
             x_val = x_val.permute(1, 2, 0).to(device)
 
-            y_val = torch.stack(y_val, dim=1).to(device)
+            
+            # y_val = torch.stack(y_val, dim=1).to(device)
 
             model.eval()
             yhat = model(x_val)
             val_loss, acc = masked_BCE_from_logits(y_val, yhat)#.item()
             val_losses.append(val_loss)
             batch_acc_val.append(acc)
-            break
+            #break
+        
         epoch_acc_val = np.mean(batch_acc_val)
         val_acc.append(epoch_acc_val)
         validation_loss = np.mean(val_losses)
         validation_losses.append(validation_loss)
-
+    
+    scheduler.step(validation_loss)
+    lrs.append(optimizer.param_groups[0]["lr"])
     print(f"[{epoch+1}] Training loss: {training_loss:.3f}\t Validation loss: {validation_loss:.3f}")
     print(f"[{epoch+1}] Training Accuracy: {epoch_acc_training:.3f}\t Validation Accuracy: {epoch_acc_val:.3f}")
     print("="*20)
-    # break
+    #break
 print(model.state_dict())
 #%%
-torch.save(model.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/pytorch_model')
+torch.save(model.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/pytorch_model-oneDr')
 
 # model = model_torch_batch.raw_seq_model(*args, **kwargs)
 # model.load_state_dict(torch.load(PATH))
@@ -227,10 +256,10 @@ d = {'training_losses':training_losses,
      'Training Accuracy': training_acc, 
      'Validation Accuracy': val_acc}
 history = pd.DataFrame.from_dict(d)
-pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history.csv",index=False)
+#pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history-oneDr.csv",index=False)
 
 fig, ax = plt.subplots()
-x = np.arange(1, 3+1, 1)
+x = np.arange(1, n_epochs+1, 1)
 ax.plot(x, history["training_losses"],label='Training')
 ax.plot(x, history["validation_losses"],label='Validation')
 ax.legend()
@@ -245,12 +274,12 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss.png")
-#%%
+#fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss-oneDr.png")
+
 fig, ax = plt.subplots()
-x = np.arange(1, 3+1, 1)
-ax.plot(x, history["training_acc"],label='Training')
-ax.plot(x, history["val_acc"],label='Validation')
+x = np.arange(1, n_epochs+1, 1)
+ax.plot(x, history["Training Accuracy"],label='Training')
+ax.plot(x, history["Validation Accuracy"],label='Validation')
 ax.legend()
 ax.set_xlabel("Number of Epoch")
 ax.set_ylabel("Accuracy")
@@ -263,4 +292,6 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy.png")
+#fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-oneDr.png")
+
+# %%
