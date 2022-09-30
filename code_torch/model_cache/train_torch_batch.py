@@ -74,45 +74,44 @@ class RawReadDataset(Dataset):
 
 dataset = RawReadDataset(list(seqs_df_agg), res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 #%%
-def masked_BCE_from_logits(y_true, y_pred_logits):
-    """
-    Computes the BCE loss from logits and tolerates NaNs in `y_true`.
-    """
-    b_loss = 0
-    #loss = torch.nn.MultiLabelSoftMarginLoss()
-    loss = torch.nn.BCEWithLogitsLoss()
-    acc_list = []
-    accuracy = Accuracy().to(device)
-    for i in range(0,len(y_true)): # this loop is done because after removal of nan, the tensor would have ben rugged
-        non_nan_ids = torch.argwhere(~torch.isnan(y_true[i]))
-        non_nan_ids = torch.flatten(non_nan_ids)
-        # print("non_nan_ids:",non_nan_ids)
-        # print("y_true.size:",y_true.size())
-        # print("y_pred_logits.size:",y_pred_logits.size())
-        # print(y_pred_logits)
-        y_true_non_nan = torch.index_select(y_true[i],0, non_nan_ids)
-        # print("y_true_non_nan:",y_true_non_nan)
+# def masked_BCE_from_logits(y_true, y_pred_logits):
+#     """
+#     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
+#     """
+#     b_loss = 0
+#     #loss = torch.nn.MultiLabelSoftMarginLoss()
+#     loss = torch.nn.BCEWithLogitsLoss()
+#     acc_list = []
+#     accuracy = Accuracy().to(device)
+#     for i in range(0,len(y_true)): # this loop is done because after removal of nan, the tensor would have ben rugged
+#         non_nan_ids = torch.argwhere(~torch.isnan(y_true[i]))
+#         non_nan_ids = torch.flatten(non_nan_ids)
+#         # print("non_nan_ids:",non_nan_ids)
+#         # print("y_true.size:",y_true.size())
+#         # print("y_pred_logits.size:",y_pred_logits.size())
+#         # print(y_pred_logits)
+#         y_true_non_nan = torch.index_select(y_true[i],0, non_nan_ids)
+#         # print("y_true_non_nan:",y_true_non_nan)
 
-        y_pred_logits_non_nan = torch.index_select(y_pred_logits[i],0, non_nan_ids)
-        # print(y_pred_logits_non_nan)
+#         y_pred_logits_non_nan = torch.index_select(y_pred_logits[i],0, non_nan_ids)
+#         # print(y_pred_logits_non_nan)
         
-        loss_value = loss(y_pred_logits_non_nan, y_true_non_nan)
-        # b_loss.append(loss_value)
-        y_true_non_nan = y_true_non_nan.int()
-        acc_list.append(accuracy(y_pred_logits_non_nan, y_true_non_nan))
-        b_loss += loss_value
-    # b_loss = torch.Tensor(b_loss)
-    # print(torch.nn.MarginRankingLossExp()(b_loss))
-    acc_list = torch.Tensor(acc_list)
+#         loss_value = loss(y_pred_logits_non_nan, y_true_non_nan)
+#         # b_loss.append(loss_value)
+#         y_true_non_nan = y_true_non_nan.int()
+#         acc_list.append(accuracy(y_pred_logits_non_nan, y_true_non_nan))
+#         b_loss += loss_value
+#     # b_loss = torch.Tensor(b_loss)
+#     # print(torch.nn.MarginRankingLossExp()(b_loss))
+#     acc_list = torch.Tensor(acc_list)
 
-    return b_loss/len(y_true), torch.mean(acc_list)
+#     return b_loss/len(y_true), torch.mean(acc_list)
 
 #%%
 def masked_BCE_from_logits(y_true, y_pred_logits):
     """
     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
     """
-    accuracy = Accuracy().to(device)
     bce_logits = torch.nn.BCEWithLogitsLoss()
     # print("y_true", y_true.size())
     non_nan_mask = ~y_true.isnan()
@@ -121,10 +120,9 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     # print("y_true_non_nan:", y_true_non_nan.size())
     y_pred_logits_non_nan = y_pred_logits[non_nan_mask]
     # print("y_pred_logits_non_nan:", y_pred_logits_non_nan.size())
-    bce = bce_logits(y_pred_logits_non_nan, y_true_non_nan)
-    y_true_non_nan = y_true_non_nan.int()
-    acc = accuracy(y_pred_logits_non_nan, y_true_non_nan.int())
-    return bce, acc
+
+    return bce_logits(y_pred_logits_non_nan, y_true_non_nan), 0
+
 
 
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
@@ -168,18 +166,18 @@ def make_train_step(model, loss_fn, optimizer):
         x = x.float()
         yhat = model(x)
         loss, acc = loss_fn(y, yhat)
-        # loss = torch.Tensor(loss)
-        # loss.requires_grad_()
+        loss.requires_grad_()
         loss.backward()
         optimizer.step()
         # scheduler.step(0)
         optimizer.zero_grad()
-        return loss, acc
+        return loss.item(), acc#.item()
     return train_step
 
 model = model_torch_batch.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+# optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9, dampening=0, weight_decay=0, nesterov=False, maximize=False, foreach=None)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=0.0001, verbose=True)
 n_epochs = 100
@@ -203,8 +201,8 @@ for epoch in range(n_epochs):
         x_batch = x_batch.permute(1, 2, 0).to(device)
         y_batch = torch.stack(y_batch, dim=1).to(device)
         loss, acc = train_step(x_batch, y_batch)
-        batch_losses.append(loss.item())
-        batch_acc_train.append(acc.item())
+        batch_losses.append(loss)
+        batch_acc_train.append(acc)
         
         # print(f"training batch: {training_batch}")
         # training_batch += 1
@@ -232,7 +230,7 @@ for epoch in range(n_epochs):
             yhat = model(x_val)
             val_loss, acc = masked_BCE_from_logits(y_val, yhat)
             val_losses.append(val_loss.item())
-            batch_acc_val.append(acc.item())
+            batch_acc_val.append(acc)
             
             # print(f"val batch: {val_batch}")
             # val_batch += 1
@@ -249,7 +247,7 @@ for epoch in range(n_epochs):
     # break
 print(model.state_dict())
 #%%
-torch.save(model.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/pytorch_model-batch')
+torch.save(model.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/pytorch_model-batch-acc')
 
 # model = model_torch_batch.raw_seq_model(*args, **kwargs)
 # model.load_state_dict(torch.load(PATH))
@@ -261,7 +259,7 @@ d = {'training_losses':training_losses,
      'Validation Accuracy': val_acc,
      "Learning rates": lrs}
 history = pd.DataFrame.from_dict(d)
-pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history-batch.csv",index=False)
+pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history-batch-acc.csv",index=False)
 #%%
 fig, ax = plt.subplots()
 x = np.arange(1, n_epochs+1, 1)
@@ -281,7 +279,7 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss-batch.png")
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss-batch-acc.png")
 
 fig, ax = plt.subplots()
 x = np.arange(1, n_epochs+1, 1)
@@ -301,7 +299,17 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-batch.png")
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-batch-acc.png")
 
 
 # %%
+# %%
+bla = 'blu'
+# %%
+
+
+def func():
+    raise ValueError()
+
+    
+func()
