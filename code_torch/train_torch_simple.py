@@ -172,7 +172,7 @@ model = model_torch_simple.raw_seq_model().to(device) # model = nn.Sequential(nn
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
-n_epochs = 100
+n_epochs = 20
 training_losses = []
 validation_losses = []
 lrs = []
@@ -248,7 +248,7 @@ d = {'training_losses':training_losses,
      'Training Accuracy': training_acc, 
      'Validation Accuracy': val_acc}
 history = pd.DataFrame.from_dict(d)
-#pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history-simple.csv",index=False)
+pd.DataFrame(history).to_csv("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/training-history-simple.csv",index=False)
 
 fig, ax = plt.subplots()
 x = np.arange(1, n_epochs+1, 1)
@@ -266,7 +266,7 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-#fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss-simple.png")
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss-simple.png")
 
 fig, ax = plt.subplots()
 x = np.arange(1, n_epochs+1, 1)
@@ -284,6 +284,4 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-#fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-simple.png")
-
-# %%
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-simple.png")
