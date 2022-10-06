@@ -1,3 +1,6 @@
+#training mode to predict for inh resistance using katG with masking for na values
+#training using masked loss
+
 #%%
 from array import array
 from cmath import nan
@@ -51,7 +54,7 @@ N_drugs = len(DRUGS)
 seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 # make sure the loci are in the same order as in the training data
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
-
+#%%
 # merging all columns of list into one
 # separator = "N"*30
 # seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
@@ -90,6 +93,7 @@ class RawReadDataset(Dataset):
 
 dataset = RawReadDataset(seqs_df_agg, res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 
+
 #%%
 def masked_BCE_from_logits(y_true, y_pred_logits):
     """
@@ -112,13 +116,47 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     loss_value = loss(y_pred_logits, y_true)
     y_true = y_true.int()
     acc = accuracy(y_pred_logits, y_true)
-
     return loss_value, acc
+    
+    # # bce_logits = torch.nn.BCEWithLogitsLoss()
+    # # bce_logits = bce_logits.to(device)
+    # #print("y_true", y_true.size())
+    # # #(y_true)
+    # non_nan_mask = torch.isnan(y_true)
+    # #print("non_nan_mask:", non_nan_mask.size())
+    # # print(non_nan_mask)
+    # # y_true_non_nan = y_true[non_nan_mask]
+    # y_true_non_nan = y_true[~non_nan_mask]
+    # #print("y_true_non_nan:", y_true_non_nan.size())
+    # # print(y_true_non_nan)
+    # # y_pred_logits = torch.flatten(y_pred_logits)
+    # y_pred_logits = y_pred_logits.view(y_pred_logits.size(0))
+    # # print('y_pred_logits:',y_pred_logits.size())
+    # # y_pred_logits_non_nan = y_pred_logits[non_nan_mask]
+    # # non_nan_mask = non_nan_mask.to(device)
+    # # y_pred_logits = y_pred_logits.to(device)
+    
+    # y_pred_logits_non_nan = y_pred_logits[~non_nan_mask]
+    # # print("y_pred_logits_non_nan:", y_pred_logits_non_nan.size())
+    # # y_pred_logits_non_nan = y_pred_logits_non_nan.view(y_pred_logits_non_nan.size(0))
+    # # print(y_pred_logits_non_nan.size())
+    # # y_pred_logits_non_nan = torch.flatten(y_pred_logits_non_nan)
+    # # print(y_pred_logits_non_nan.size())
+    # y_pred_logits_non_nan = y_pred_logits_non_nan.to(device)
+    # y_true_non_nan = y_true_non_nan.to(device)
+    # # print(y_pred_logits_non_nan.size())
+    # # print(y_pred_logits_non_nan)
 
-#%%
+    # l = bce_logits(y_pred_logits_non_nan.float(), y_true_non_nan.float())
+    # a = accuracy(y_pred_logits_non_nan, y_true_non_nan.int())
+    # # return bce_logits(y_pred_logits_non_nan, y_true_non_nan), accuracy(y_pred_logits_non_nan, y_true_non_nan.int())
+
+    # return l,a
+
+
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
-train_loader = DataLoader(dataset=train_dataset, batch_size=128)
-val_loader = DataLoader(dataset=val_dataset, batch_size=128)
+train_loader = DataLoader(dataset=train_dataset, batch_size=32)
+val_loader = DataLoader(dataset=val_dataset, batch_size=32)
 
 def one_hot_torch(seq):
     oh = []
@@ -156,7 +194,7 @@ def make_train_step(model, loss_fn, optimizer):
         x = x.float()
         yhat = model(x)
         loss, acc = loss_fn(y, yhat)
-        loss = torch.Tensor(loss)
+        loss = torch.tensor(loss)
         loss.requires_grad_()
         loss.backward()
         optimizer.step()
@@ -169,10 +207,10 @@ def make_train_step(model, loss_fn, optimizer):
 
 model = model_torch_simple.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
-n_epochs = 20
+n_epochs = 100
 training_losses = []
 validation_losses = []
 lrs = []

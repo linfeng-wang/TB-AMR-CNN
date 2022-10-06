@@ -313,3 +313,9 @@ def func():
 
     
 func()
+
+#%%
+x, y = next(iter(train_loader))
+# %%
+y
+# %%
