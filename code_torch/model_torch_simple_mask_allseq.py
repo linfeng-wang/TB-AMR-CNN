@@ -85,7 +85,7 @@ class raw_seq_model(nn.Module):
     def forward(self, x):
         # print("Input tensor size:", x.size())
         x = self.conv_layer1(x)
-        #print("tensor size after conv_layer1:", x.size())
+        # print("tensor size after conv_layer1:", x.size())
 
         x = self.batch_norm(x)
         # print("tensor size after batch_norm:", x.size())
@@ -100,14 +100,13 @@ class raw_seq_model(nn.Module):
                         
         # print("tensor size after conv_block1:", x.size())
 
-        # x = x.permute(1, 0, 2)
         x = F.max_pool1d(x, kernel_size=x.size()[2:]) #global_maxpool
         # x = self.maxpool(x)
         x = x.squeeze(dim = -1)
         # x = torch.t(x)
         # 
 
-        #print("tensor size after global_maxpool:", x.size())
+        # print("tensor size after global_maxpool:", x.size())
 
         # for i in range(1, self.num_dense_layers + 1):
         #     x = self.dense_block1(x)

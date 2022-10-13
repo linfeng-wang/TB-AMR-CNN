@@ -29,10 +29,12 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 from importlib import reload
 import util
-import model_torch_simple
+import model_torch_simple_mask_allseq
 from torchmetrics import Accuracy
+from torch.utils.data.datapipes.datapipe import _IterDataPipeSerializationWrapper, _MapDataPipeSerializationWrapper
+from torch.utils.data import default_convert
 
-model_torch_simple = reload(model_torch_simple)
+model_torch_simple_mask_allseq = reload(model_torch_simple_mask_allseq)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -52,65 +54,58 @@ seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 # make sure the loci are in the same order as in the training data
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
 
-# merging all columns of list into one
-# separator = "N"*30
-# seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-# res_all_combined = res_all.values.tolist()
-
-# train_frames = [seqs_df['KatG'], res_all['ISONIAZID']]
-# train_data = pd.concat(train_frames, axis = 1)
-# # train_data = train_data.dropna()
-# # train_data = train_data.reset_index(drop=True)
-
-# seqs_df_agg = train_data["KatG"].tolist()
-# res_all_combined = train_data["ISONIAZID"].tolist()
 
 
-# # seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-# # res_cryptic_combined = res_cryptic.values.tolist()
+#%%
 
-# val_frames = [seqs_cryptic['KatG'], res_cryptic['ISONIAZID']]
-# val_data = pd.concat(val_frames, axis = 1)
-# # val_data = val_data.dropna()
-# # val_data = val_data.reset_index(drop=True)
-
-# seqs_cryptic_agg = val_data["KatG"].tolist()
-# res_cryptic_combined = val_data["ISONIAZID"].tolist()
-
-#####################################################single input above, all seq below
-separator=''
 training_df = pd.DataFrame(columns=['Seq', 'Dr'])
-training_df["Seq"] = seqs_df[seqs_df.columns.tolist()].apply(separator.join, axis=1)
-training_df['Dr'] = res_all["ISONIAZID"]
-# training_df = training_df.dropna()
-# training_df = training_df.reset_index(drop=True)
-seqs_df_agg = training_df["Seq"].tolist()
-res_all_combined = training_df['Dr'].tolist()
 
-val_df = pd.DataFrame(columns=['Seq', 'Dr'])
-val_df["Seq"] = seqs_cryptic[seqs_cryptic.columns.tolist()].apply(separator.join, axis=1)
-val_df['Dr'] = res_cryptic["ISONIAZID"]
-# val_df = val_df.dropna()
-# val_df = val_df.reset_index(drop=True)
-seqs_cryptic_agg = val_df['Seq'].values.tolist()
-res_cryptic_combined = val_df['Dr'].values.tolist()
+training_df['Dr']= res_all.values.tolist()
 
+separator=''
+seq = seqs_df[seqs_df.columns.tolist()].apply(separator.join, axis=1).tolist()
+training_df = training_df.assign(Seq = seq)
 
+seqs_df_agg = list(training_df["Seq"])
 
-class RawReadDataset(Dataset):
+res_all_combined = list(training_df['Dr'])
+# res_all_combined = np.array(res_all_combined).T
+# res_all_combined = res_all_combined.tolist()
+# res_all_combined = torch.tensor(res_all_combined)
+
+#%%
+class RawReadDataset():
     def __init__(self, x, y):
         self.x = x
         self.y = y    
         
-    def __getitem__(self, index):
-        return (self.x[index], self.y[index])
-
     def __len__(self):
         return len(self.x)
+    
+    def __getitem__(self, index):
+        current_sample = self.x[index]
+        # current_sample = my_padding(current_sample)
+        # current_sample = one_hot_torch(current_sample)
+        current_target = self.y[index]
+        # current_target = torch.unsqueeze(current_target, dim=2)
+        return{
+            "sample" : current_sample,
+            # "sample": torch.stack(current_sample, dim=0).to(device),
+            "target": torch.tensor(current_target).to(device)
+        }
+# class RawReadDataset(Dataset):
+#     def __init__(self, x, y):
+#         self.x = x
+#         self.y = y    
+        
+#     def __getitem__(self, index):
+#         return (self.x[index], self.y[index,:])
+
+#     def __len__(self):
+#         return len(self.x)
 
 dataset = RawReadDataset(seqs_df_agg, res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 
-#%%
 def masked_BCE_from_logits(y_true, y_pred_logits):
     """
     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
@@ -120,7 +115,6 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     bce_logits = bce_logits.to(device)
     # #print("y_true", y_true.size())
     # # #(y_true)
-    print(y_true[0])
     non_nan_mask = torch.isnan(y_true)
     # #print("non_nan_mask:", non_nan_mask.size())
     # # print(non_nan_mask)
@@ -129,9 +123,11 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     # #print("y_true_non_nan:", y_true_non_nan.size())
     # # print(y_true_non_nan)
     # # y_pred_logits = torch.flatten(y_pred_logits)
-    y_pred_logits = y_pred_logits.view(y_pred_logits.size(0))
+    # y_pred_logits = y_pred_logits.view(y_pred_logits.size(0))
     # # print('y_pred_logits:',y_pred_logits.size())
     y_pred_logits_non_nan = y_pred_logits[~non_nan_mask]
+    print(y_true_non_nan)
+    print(y_pred_logits_non_nan)
     non_nan_mask = non_nan_mask.to(device)
     
     # # print("y_pred_logits_non_nan:", y_pred_logits_non_nan.size())
@@ -147,11 +143,11 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     # # return bce_logits(y_pred_logits_non_nan, y_true_non_nan), accuracy(y_pred_logits_non_nan, y_true_non_nan.int())
 
     return l,a
-
-
+#%%
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
-train_loader = DataLoader(dataset=train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(dataset=val_dataset, batch_size=64,shuffle=True)
+train_loader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(dataset=val_dataset, batch_size=32,shuffle=True)
+# train_loader = DataLoader(dataset=dataset, batch_size=2, shuffle=True)
 
 def one_hot_torch(seq):
     oh = []
@@ -180,7 +176,7 @@ def my_padding(seq_tuple):
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #reloading model and running
-model_torch_simple = reload(model_torch_simple)
+model_torch_simple_mask_allseq = reload(model_torch_simple_mask_allseq)
 
 # hyper-parameters
 def make_train_step(model, loss_fn, optimizer):
@@ -188,6 +184,9 @@ def make_train_step(model, loss_fn, optimizer):
         model.train()
         x = x.float()
         yhat = model(x)
+        # print('yhat:', yhat.size())
+        # print('y:', y.size())
+
         loss, acc = loss_fn(y, yhat)
         loss = torch.Tensor(loss)
         loss.requires_grad_()
@@ -200,9 +199,9 @@ def make_train_step(model, loss_fn, optimizer):
         
     return train_step
 
-model = model_torch_simple.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
+model = model_torch_simple_mask_allseq.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
 n_epochs = 100
@@ -219,16 +218,21 @@ val_acc = []
 for epoch in range(n_epochs):
     batch_losses = []
     batch_acc_train = []
-    for x_batch, y_batch in train_loader:
+    for dict_ in train_loader:
+        x_batch, y_batch = dict_["sample"], dict_["target"]
+
         x_batch = my_padding(x_batch)
         x_batch = one_hot_torch(x_batch)
-        x_batch = torch.stack(x_batch, dim=1).to(device)
-        x_batch = x_batch.permute(1, 2, 0).to(device)
+        # print(len(x_batch))
+        x_batch = torch.stack(x_batch, dim=0).to(device)
         # print(x_batch.size())
-        # print(y_batch.size())
+        x_batch = x_batch.permute(0, 2, 1).to(device)
+        # print(x_batch.size())
         # print(y_batch)
-        y_batch = torch.Tensor(y_batch).to(device)
-
+        # y_batch = torch.Tensor(y_batch).to(device)
+        # print(len(y_batch))
+        # y_batch = torch.stack(y_batch, dim=0).to(device)
+        # print(y_batch.size())
         loss, acc = train_step(x_batch, y_batch)
         batch_losses.append(loss)
         batch_acc_train.append(acc.item())
@@ -240,27 +244,30 @@ for epoch in range(n_epochs):
     training_loss = np.mean(batch_losses)
     training_losses.append(training_loss)
 
-    with torch.no_grad():
-        val_losses = []
-        batch_acc_val = []
-        for x_val, y_val in val_loader:
-            x_val = my_padding(x_val)
-            x_val = one_hot_torch(x_val)
-            x_val = torch.stack(x_val, dim=1).to(device)
-            x_val = x_val.float()
-            x_val = x_val.permute(1, 2, 0).to(device)
-            # y_val = torch.stack(y_val, dim=1).to(device)
-            model.eval()
-            yhat = model(x_val)
-            val_loss, acc = masked_BCE_from_logits(y_val, yhat)#.item()
-            val_losses.append(val_loss.item())
-            batch_acc_val.append(acc.item())
-            #break
+    # with torch.no_grad():
+    #     val_losses = []
+    #     batch_acc_val = []
+    #     for x_val, y_val in val_loader:
+    #         x_val = my_padding(x_val)
+    #         x_val = one_hot_torch(x_val)
+    #         x_val = torch.stack(x_val, dim=1).to(device)
+    #         x_val = x_val.float()
+    #         x_val = x_val.permute(1, 2, 0).to(device)
+    #         y_val = torch.stack(y_val, dim=1).to(device)
+    #         model.eval()
+    #         yhat = model(x_val)
+    #         val_loss, acc = masked_BCE_from_logits(y_val, yhat)#.item()
+    #         val_losses.append(val_loss.item())
+    #         batch_acc_val.append(acc.item())
+    #         #break
         
-        epoch_acc_val = np.mean(batch_acc_val)
-        val_acc.append(epoch_acc_val)
-        validation_loss = np.mean(val_losses)
-        validation_losses.append(validation_loss)
+    #     epoch_acc_val = np.mean(batch_acc_val)
+    #     val_acc.append(epoch_acc_val)
+    #     validation_loss = np.mean(val_losses)
+    validation_loss = 0
+    epoch_acc_val = 0
+           
+    #     validation_losses.append(validation_loss)
     
     # scheduler.step(validation_loss)
     lrs.append(optimizer.param_groups[0]["lr"])
@@ -318,3 +325,43 @@ fig.tight_layout()
 fig.show()
 
 fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-simple.png")
+
+
+#%%
+#code for testing
+dict_ = next(iter(train_loader))
+# %%
+
+y_batch = torch.stack(y_batch, dim=0).to(device)
+# torch.as_tensor(y_batch)
+# %%
+y_batch = torch.stack(y_batch, dim=1).to(device)
+
+#%%
+x_batch['sample']
+# %%
+y_batch
+# %%
+len(x_batch)
+# %%
+for x, y in train_loader:
+    print(x)
+    break
+# %%
+len(y_batch)
+# %%
+y_batch[0]
+
+
+
+# %%
+a = torch.tensor(res_all_combined[0])
+
+b = torch.tensor(res_all_combined[1])
+
+
+# %%
+len(dict_['target'][31])
+
+
+# %%

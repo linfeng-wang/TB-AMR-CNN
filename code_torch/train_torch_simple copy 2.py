@@ -1,3 +1,4 @@
+#nan not droped and with all seq for input
 #%%
 from array import array
 from cmath import nan
@@ -56,46 +57,34 @@ seqs_cryptic = seqs_cryptic[seqs_df.columns]
 # separator = "N"*30
 # seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
 # res_all_combined = res_all.values.tolist()
-
+#%%
 # train_frames = [seqs_df['KatG'], res_all['ISONIAZID']]
 # train_data = pd.concat(train_frames, axis = 1)
-# # train_data = train_data.dropna()
-# # train_data = train_data.reset_index(drop=True)
+# train_data = train_data.dropna()
+# train_data = train_data.reset_index(drop=True)
+training_df = pd.DataFrame(columns=['Seq', 'Dr'])
 
-# seqs_df_agg = train_data["KatG"].tolist()
-# res_all_combined = train_data["ISONIAZID"].tolist()
+training_df['Dr']= res_all['ISONIAZID'].tolist()
+
+separator=''
+seq = seqs_df[seqs_df.columns.tolist()].apply(separator.join, axis=1).tolist()
+training_df = training_df.assign(Seq = seq)
 
 
-# # seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-# # res_cryptic_combined = res_cryptic.values.tolist()
+seqs_df_agg = training_df["Seq"].tolist()
+res_all_combined = training_df["Dr"].tolist()
+
+#%%
+# seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
+# res_cryptic_combined = res_cryptic.values.tolist()
 
 # val_frames = [seqs_cryptic['KatG'], res_cryptic['ISONIAZID']]
 # val_data = pd.concat(val_frames, axis = 1)
-# # val_data = val_data.dropna()
-# # val_data = val_data.reset_index(drop=True)
+# val_data = val_data.dropna()
+# val_data = val_data.reset_index(drop=True)
 
 # seqs_cryptic_agg = val_data["KatG"].tolist()
 # res_cryptic_combined = val_data["ISONIAZID"].tolist()
-
-#####################################################single input above, all seq below
-separator=''
-training_df = pd.DataFrame(columns=['Seq', 'Dr'])
-training_df["Seq"] = seqs_df[seqs_df.columns.tolist()].apply(separator.join, axis=1)
-training_df['Dr'] = res_all["ISONIAZID"]
-# training_df = training_df.dropna()
-# training_df = training_df.reset_index(drop=True)
-seqs_df_agg = training_df["Seq"].tolist()
-res_all_combined = training_df['Dr'].tolist()
-
-val_df = pd.DataFrame(columns=['Seq', 'Dr'])
-val_df["Seq"] = seqs_cryptic[seqs_cryptic.columns.tolist()].apply(separator.join, axis=1)
-val_df['Dr'] = res_cryptic["ISONIAZID"]
-# val_df = val_df.dropna()
-# val_df = val_df.reset_index(drop=True)
-seqs_cryptic_agg = val_df['Seq'].values.tolist()
-res_cryptic_combined = val_df['Dr'].values.tolist()
-
-
 
 class RawReadDataset(Dataset):
     def __init__(self, x, y):
@@ -115,12 +104,12 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     """
     Computes the BCE loss from logits and tolerates NaNs in `y_true`.
     """
+    bce_logits = nn.BCELoss()
     accuracy = Accuracy().to(device)
-    bce_logits = torch.nn.BCEWithLogitsLoss()
+  
     bce_logits = bce_logits.to(device)
     # #print("y_true", y_true.size())
     # # #(y_true)
-    print(y_true[0])
     non_nan_mask = torch.isnan(y_true)
     # #print("non_nan_mask:", non_nan_mask.size())
     # # print(non_nan_mask)
@@ -149,9 +138,10 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     return l,a
 
 
+#%%
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
-train_loader = DataLoader(dataset=train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(dataset=val_dataset, batch_size=64,shuffle=True)
+train_loader = DataLoader(dataset=train_dataset, batch_size=32)
+val_loader = DataLoader(dataset=val_dataset, batch_size=32)
 
 def one_hot_torch(seq):
     oh = []
@@ -176,7 +166,7 @@ def my_padding(seq_tuple):
 
 #%%
 # Testing conditions
-# device = 'cpu'
+#device = 'cpu'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #reloading model and running
@@ -202,10 +192,10 @@ def make_train_step(model, loss_fn, optimizer):
 
 model = model_torch_simple.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
-n_epochs = 100
+n_epochs = 20
 training_losses = []
 validation_losses = []
 lrs = []
@@ -215,7 +205,7 @@ val_acc = []
 
 # print(model.state_dict())
 
-# trainingtorch.cuda.empty_cache()
+# training
 for epoch in range(n_epochs):
     batch_losses = []
     batch_acc_train = []

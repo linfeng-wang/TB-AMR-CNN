@@ -29,10 +29,10 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 from importlib import reload
 import util
-import model_torch_simple
+import model_torch_simple_mask_allseq
 from torchmetrics import Accuracy
 
-model_torch_simple = reload(model_torch_simple)
+model_torch_simple_mask_allseq = reload(model_torch_simple_mask_allseq)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -57,45 +57,43 @@ seqs_cryptic = seqs_cryptic[seqs_df.columns]
 # seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
 # res_all_combined = res_all.values.tolist()
 
+
+#%%
+# train_df= [seqs_df, res_all]
+# train_data = pd.concat(train_df, axis = 1)
+# train_data = train_data.dropna()
+
 # train_frames = [seqs_df['KatG'], res_all['ISONIAZID']]
 # train_data = pd.concat(train_frames, axis = 1)
-# # train_data = train_data.dropna()
-# # train_data = train_data.reset_index(drop=True)
+# train_data = train_data.dropna()
+# train_data = train_data.reset_index(drop=True)
 
 # seqs_df_agg = train_data["KatG"].tolist()
 # res_all_combined = train_data["ISONIAZID"].tolist()
+training_df = pd.DataFrame(columns=['Seq', 'Dr'])
 
+training_df['Dr']= res_all.values.tolist()
 
-# # seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-# # res_cryptic_combined = res_cryptic.values.tolist()
+separator=''
+seq = seqs_df[seqs_df.columns.tolist()].apply(separator.join, axis=1).tolist()
+training_df = training_df.assign(Seq = seq)
+
+seqs_df_agg = list(training_df["Seq"])
+
+res_all_combined = list(training_df['Dr'])
+res_all_combined = np.array(res_all_combined)
+# res_all_combined = torch.from_numpy(res_all_combined)
+#%%
+# seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
+# res_cryptic_combined = res_cryptic.values.tolist()
 
 # val_frames = [seqs_cryptic['KatG'], res_cryptic['ISONIAZID']]
 # val_data = pd.concat(val_frames, axis = 1)
-# # val_data = val_data.dropna()
-# # val_data = val_data.reset_index(drop=True)
+# val_data = val_data.dropna()
+# val_data = val_data.reset_index(drop=True)
 
 # seqs_cryptic_agg = val_data["KatG"].tolist()
 # res_cryptic_combined = val_data["ISONIAZID"].tolist()
-
-#####################################################single input above, all seq below
-separator=''
-training_df = pd.DataFrame(columns=['Seq', 'Dr'])
-training_df["Seq"] = seqs_df[seqs_df.columns.tolist()].apply(separator.join, axis=1)
-training_df['Dr'] = res_all["ISONIAZID"]
-# training_df = training_df.dropna()
-# training_df = training_df.reset_index(drop=True)
-seqs_df_agg = training_df["Seq"].tolist()
-res_all_combined = training_df['Dr'].tolist()
-
-val_df = pd.DataFrame(columns=['Seq', 'Dr'])
-val_df["Seq"] = seqs_cryptic[seqs_cryptic.columns.tolist()].apply(separator.join, axis=1)
-val_df['Dr'] = res_cryptic["ISONIAZID"]
-# val_df = val_df.dropna()
-# val_df = val_df.reset_index(drop=True)
-seqs_cryptic_agg = val_df['Seq'].values.tolist()
-res_cryptic_combined = val_df['Dr'].values.tolist()
-
-
 
 class RawReadDataset(Dataset):
     def __init__(self, x, y):
@@ -110,6 +108,7 @@ class RawReadDataset(Dataset):
 
 dataset = RawReadDataset(seqs_df_agg, res_all_combined) # dataset = CustomDataset(x_tensor, y_tensor)
 
+
 #%%
 def masked_BCE_from_logits(y_true, y_pred_logits):
     """
@@ -118,41 +117,32 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
     accuracy = Accuracy().to(device)
     bce_logits = torch.nn.BCEWithLogitsLoss()
     bce_logits = bce_logits.to(device)
-    # #print("y_true", y_true.size())
-    # # #(y_true)
-    print(y_true[0])
-    non_nan_mask = torch.isnan(y_true)
-    # #print("non_nan_mask:", non_nan_mask.size())
-    # # print(non_nan_mask)
+
+    y_true = torch.tensor(y_true)
+    non_nan_mask = ~y_true.isnan()
+
     y_true_non_nan = y_true[non_nan_mask]
-    y_true_non_nan = y_true[~non_nan_mask]
-    # #print("y_true_non_nan:", y_true_non_nan.size())
-    # # print(y_true_non_nan)
-    # # y_pred_logits = torch.flatten(y_pred_logits)
-    y_pred_logits = y_pred_logits.view(y_pred_logits.size(0))
-    # # print('y_pred_logits:',y_pred_logits.size())
-    y_pred_logits_non_nan = y_pred_logits[~non_nan_mask]
+    y_pred_logits_non_nan = y_pred_logits[non_nan_mask]
+    
     non_nan_mask = non_nan_mask.to(device)
     
-    # # print("y_pred_logits_non_nan:", y_pred_logits_non_nan.size())
-    # # print(y_pred_logits_non_nan.size())
-    # # print(y_pred_logits_non_nan.size())
     y_pred_logits_non_nan = y_pred_logits_non_nan.to(device)
     y_true_non_nan = y_true_non_nan.to(device)
-    # # print(y_pred_logits_non_nan.size())
-    # # print(y_pred_logits_non_nan)
+
 
     l = bce_logits(y_pred_logits_non_nan.float(), y_true_non_nan.float())
     a = accuracy(y_pred_logits_non_nan, y_true_non_nan.int())
-    # # return bce_logits(y_pred_logits_non_nan, y_true_non_nan), accuracy(y_pred_logits_non_nan, y_true_non_nan.int())
 
     return l,a
 
 
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
-train_loader = DataLoader(dataset=train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(dataset=val_dataset, batch_size=64,shuffle=True)
 
+train_loader = DataLoader(dataset=train_dataset, batch_size=32)
+val_loader = DataLoader(dataset=val_dataset, batch_size=32)
+#%%
+
+#%%
 def one_hot_torch(seq):
     oh = []
     for sample in seq:
@@ -176,11 +166,11 @@ def my_padding(seq_tuple):
 
 #%%
 # Testing conditions
-# device = 'cpu'
+#device = 'cpu'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #reloading model and running
-model_torch_simple = reload(model_torch_simple)
+model_torch_simple_mask_allseq = reload(model_torch_simple_mask_allseq)
 
 # hyper-parameters
 def make_train_step(model, loss_fn, optimizer):
@@ -200,12 +190,12 @@ def make_train_step(model, loss_fn, optimizer):
         
     return train_step
 
-model = model_torch_simple.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
+model = model_torch_simple_mask_allseq.raw_seq_model().to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
-n_epochs = 100
+n_epochs = 20
 training_losses = []
 validation_losses = []
 lrs = []
@@ -215,7 +205,7 @@ val_acc = []
 
 # print(model.state_dict())
 
-# trainingtorch.cuda.empty_cache()
+# training
 for epoch in range(n_epochs):
     batch_losses = []
     batch_acc_train = []
@@ -227,8 +217,7 @@ for epoch in range(n_epochs):
         # print(x_batch.size())
         # print(y_batch.size())
         # print(y_batch)
-        y_batch = torch.Tensor(y_batch).to(device)
-
+        # y_batch = torch.stack(y_batch, dim=0).to(device)
         loss, acc = train_step(x_batch, y_batch)
         batch_losses.append(loss)
         batch_acc_train.append(acc.item())
@@ -318,3 +307,18 @@ fig.tight_layout()
 fig.show()
 
 fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-simple.png")
+
+#%%
+x_batch, y_batch = next(iter(train_loader))
+# %%
+
+y_batch = torch.stack(y_batch, dim=1).to(device)
+# torch.as_tensor(y_batch)
+# %%
+y_batch = torch.stack(y_batch, dim=0).to(device)
+
+# %%
+y_batch
+# %%
+len(x_batch)
+# %%
