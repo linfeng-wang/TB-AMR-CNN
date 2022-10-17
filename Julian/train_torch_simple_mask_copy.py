@@ -245,9 +245,9 @@ class AccumulatingMaskedAccuracy:
 # get_model first
 m = Model(
     num_classes=len(DRUGS),
-    num_filters=16,
+    num_filters=128,
     num_conv_layers=0,
-    num_dense_neurons=16,
+    num_dense_neurons=64,
     num_dense_layers=0,
     return_logits=True,
 ).to(device)
@@ -258,7 +258,7 @@ torchsummary.summary(m, (4, 50000))
 
 
 # hyperparameters
-optimizer = torch.optim.Adam(m.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(m.parameters(), lr=0.01, weight_decay=1e-5)
 N_epochs = 20
 train_loss = []
 loader = torch.utils.data.DataLoader(
@@ -307,10 +307,10 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_0c0d16f16n_1.png")
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_0c0d128f64n_d.png")
 
 # %%
-torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_model_0c0d16f16n_1.pth')
+torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_model_0c0d128f64n_d.pth')
 
 # #%%
 # #model evaluation

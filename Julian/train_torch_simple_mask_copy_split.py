@@ -30,7 +30,7 @@ seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 # make sure the loci are in the same order as in the training data
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
 
-#%%
+
 drugs_sorted = res_all.isna().sum(axis=0).sort_values(ascending=False).index
 least_common_drug_per_sample = pd.Series(pd.NA, index=res_all.index)
 for idx, row in res_all.iterrows():
@@ -38,7 +38,7 @@ for idx, row in res_all.iterrows():
         if not pd.isna(row[drug]):
             least_common_drug_per_sample[idx] = drug
             break
-#%%
+
 RANDOM_SEED = 42
 # use this now to create the stratified train/val split
 train_idx, val_idx = train_test_split(
@@ -249,21 +249,51 @@ class AccumulatingMaskedAccuracy:
     def __repr__(self):
         return self.__str__()
 
+#%%
+# from torchviz import make_dot
+# x = torch.randn(1, 4, 56).to(device)
+# y = m(x)
+# make_dot(y, params=dict(list(m.named_parameters()))).render("cnn_torchviz", format="png")
 
 # %% ###################################################################
 # train now
 # get_model first
+num_filters=128
+num_conv_layers=0
+num_dense_neurons=64
+num_dense_layers=0
+return_logits=True
+conv_dropout_rate= 0
+step_size=6
+gamma=0.5
+N_epochs = 20
+batch_size = 16
+
+print(f'num_filters={num_filters} \n \
+    num_conv_layers={num_conv_layers} \n \
+    num_dense_neurons={num_dense_neurons}\n \
+    num_dense_layers={num_dense_layers}\n \
+    return_logits={return_logits}\n \
+    conv_dropout_rate= {conv_dropout_rate}\n \
+    step_size={step_size}\n gamma={gamma}\n \
+    N_epochs = {N_epochs} \n batch_size={batch_size}')
+print('='*30)
+
 m = Model(
     num_classes=len(DRUGS),
-    num_filters=128,
-    num_conv_layers=2,
-    num_dense_neurons=64,
-    num_dense_layers=3,
-    return_logits=True,
+    num_filters=num_filters,
+    num_conv_layers=num_conv_layers,
+    num_dense_neurons=num_dense_neurons,
+    num_dense_layers=num_dense_layers,
+    return_logits=return_logits,
+    conv_dropout_rate= conv_dropout_rate
 ).to(device)
 # hyperparameters
-optimizer = torch.optim.Adam(m.parameters(), lr=0.01)
-N_epochs = 20
+optimizer = torch.optim.Adam(m.parameters(), lr=0.01, weight_decay=1e-5)
+#optimizer = torch.optim.SGD(m.parameters(), lr=0.01, momentum=0.3, dampening=0, weight_decay=0.3, nesterov=True, maximize=False, foreach=None)
+# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.6, patience=2, verbose=True)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+N_epochs = N_epochs
 train_loss = []
 # loader = torch.utils.data.DataLoader(
 #     dataset,
@@ -273,12 +303,10 @@ train_loss = []
 #     num_workers=4,
 # )
 train_loader = torch.utils.data.DataLoader(
-    train_dataset, batch_size=64, shuffle=True, collate_fn=collate_padded_batch,num_workers=4
-)
+    train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_padded_batch,num_workers=4)
 
 val_loader = torch.utils.data.DataLoader(
-    val_dataset, batch_size=64, shuffle=True, collate_fn=collate_padded_batch,num_workers=4
-)
+    val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_padded_batch,num_workers=4)
 
 # training loop
 train_loss_per_epoch = []
@@ -304,6 +332,7 @@ for epoch in range(N_epochs):
     epoch_loss = np.array(loss_per_batch).mean()
     train_loss_per_epoch.append(epoch_loss)
     accs.append(acc.values)
+    scheduler.step()
     print(f"epoch {epoch}: training loss={round(epoch_loss, 4)}")
     print(acc)
     m.eval()
@@ -317,8 +346,6 @@ for epoch in range(N_epochs):
     val_loss_per_epoch.append(epoch_loss)
     print(f"epoch {epoch}: validation loss={round(epoch_loss, 4)}")
     print('-----------------------')
-
-
 
     
 # %% ###################################################################
@@ -335,12 +362,10 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split.png")
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_128f64n-s.png")
 
 # %%
-torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_model')
+torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_model_128f64n-20e1')
 
 # %% ###################################################################
-model = model_torch_batch.raw_seq_model(*args, **kwargs)
-model.load_state_dict(torch.load(PATH))
-model.eval()
+ 
