@@ -111,8 +111,6 @@ loader = torch.utils.data.DataLoader(
     dataset, batch_size=16, shuffle=True, collate_fn=collate_padded_batch
 )
 # %% ###################################################################
-
-
 class Model(nn.Module):
     def __init__(
         self,

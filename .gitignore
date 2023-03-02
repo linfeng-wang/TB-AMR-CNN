@@ -2,6 +2,10 @@
 data
 *.fasta
 *.npy
+*csv
+*.bam
+*.cram
+*.pack
 
 # internal validation scripts / notebooks
 eval*
@@ -139,3 +143,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# bam files and processed onehot encoding
+docker_ohe/
+
+Julian/test
+*.csv
+/mnt/storageG1/lwang/TB-AMR-CNN/ml_workshop/data
+
+# find . -type f -size +99M

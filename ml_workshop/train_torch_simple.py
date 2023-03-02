@@ -32,6 +32,7 @@ import util
 import model_torch_simple
 from torchmetrics import Accuracy
 from tqdm import tqdm
+import argparse
 
 #%%
 
@@ -44,50 +45,23 @@ parser.add_argument("-dr", "--dropout_rate", help='Dropout rate for hte model la
 
 args = parser.parse_args()
 
-lr = args.learning_rate
-dr = args.dropout_rate
+lr = float(args.learning_rate)
+dr = float(args.dropout_rate)
 
 model_torch_simple = reload(model_torch_simple)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(123)
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
 # load training data
-seqs_df, res_all = util.load_data.get_main_dataset()
-N_samples = seqs_df.shape[0]
-DRUGS = util.DRUGS
-assert set(DRUGS) == set(res_all.columns)
-N_drugs = len(DRUGS)
-
-# load the CRyPTIC samples as test data
-seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
-# make sure the loci are in the same order as in the training data
-seqs_cryptic = seqs_cryptic[seqs_df.columns]
-
-# merging all columns of list into one
-# separator = "N"*30
-# seqs_df_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-# res_all_combined = res_all.values.tolist()
-
-train_frames = [seqs_df['KatG'], res_all['ISONIAZID']]
-train_data = pd.concat(train_frames, axis = 1)
-train_data = train_data.dropna()
-train_data = train_data.reset_index(drop=True)
+train_data = pd.read_csv('data/training_data.csv')
+val_data = pd.read_csv('data/validation_data.csv')
 
 seqs_df_agg = train_data["KatG"].tolist()
 res_all_combined = train_data["ISONIAZID"].tolist()
-
-
-# seqs_cryptic_agg =  seqs_df[list(seqs_df.columns)].agg(lambda x: separator.join(x.values), axis=1).T
-# res_cryptic_combined = res_cryptic.values.tolist()
-
-val_frames = [seqs_cryptic['KatG'], res_cryptic['ISONIAZID']]
-val_data = pd.concat(val_frames, axis = 1)
-val_data = val_data.dropna()
-val_data = val_data.reset_index(drop=True)
 
 seqs_cryptic_agg = val_data["KatG"].tolist()
 res_cryptic_combined = val_data["ISONIAZID"].tolist()
@@ -132,8 +106,8 @@ def masked_BCE_from_logits(y_true, y_pred_logits):
 
 #%%
 train_dataset, val_dataset = random_split(dataset, [int(len(seqs_df_agg)*0.8), len(seqs_df_agg)-int(len(seqs_df_agg)*0.8)])
-train_loader = DataLoader(dataset=train_dataset, batch_size=256)
-val_loader = DataLoader(dataset=val_dataset, batch_size=256)
+train_loader = DataLoader(dataset=train_dataset, batch_size=128)
+val_loader = DataLoader(dataset=val_dataset, batch_size=128)
 
 def one_hot_torch(seq):
     oh = []
@@ -182,11 +156,11 @@ def make_train_step(model, loss_fn, optimizer):
         
     return train_step
 
-model = model_torch_simple.raw_seq_model(dense_dropout_rate = 0.2).to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
+model = model_torch_simple.raw_seq_model(dense_dropout_rate = dr).to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 train_step = make_train_step(model, masked_BCE_from_logits, optimizer)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
+# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,min_lr=1e-6, verbose=True)
 n_epochs = 20
 training_losses = []
 validation_losses = []
@@ -272,6 +246,7 @@ ax.legend()
 ax.set_xlabel("Number of Epoch")
 ax.set_ylabel("Loss")
 ax.set_xticks(np.arange(0, n_epochs+1, 10))
+ax.set_title(f'Learning_rate:{lr}-Dropout_rate:{dr}')
 # ax_2 = ax.twinx()
 # ax_2.plot(history["lr"], "k--", lw=1)
 # ax_2.set_yscale("log")
@@ -280,7 +255,7 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-loss-simple.png")
+fig.savefig(f"IND-model_LR:{lr}-DR:{dr}-LOSS.png")
 
 fig, ax = plt.subplots()
 x = np.arange(1, n_epochs+1, 1)
@@ -290,6 +265,8 @@ ax.legend()
 ax.set_xlabel("Number of Epoch")
 ax.set_ylabel("Accuracy")
 ax.set_xticks(np.arange(0, n_epochs+1, 10))
+ax.set_title(f'Learning_rate:{lr}-Dropout_rate:{dr}')
+
 # ax_2 = ax.twinx()
 # ax_2.plot(history["lr"], "k--", lw=1)
 # ax_2.set_yscale("log")
@@ -298,6 +275,6 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/code_torch/batch-training-accuracy-simple.png")
+fig.savefig(f"IND-model_LR:{lr}-DR:{dr}-ACC.png")
 
 # %%

@@ -1,5 +1,7 @@
 # nan not droped and with all seq for input
 # %% ###################################################################
+from cmath import nan
+from xml.sax import xmlreader
 import numpy as np
 import pandas as pd
 import torch
@@ -9,8 +11,13 @@ import util
 import torchsummary
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-
-
+from ignite.engine import *
+from ignite.handlers import *
+from ignite.metrics import *
+from ignite.utils import *
+from ignite.contrib.metrics.regression import *
+from ignite.contrib.metrics import *
+from tqdm import tqdm
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 torch.manual_seed(42)
@@ -30,25 +37,6 @@ seqs_cryptic, res_cryptic = util.load_data.get_cryptic_dataset()
 # make sure the loci are in the same order as in the training data
 seqs_cryptic = seqs_cryptic[seqs_df.columns]
 
-
-drugs_sorted = res_all.isna().sum(axis=0).sort_values(ascending=False).index
-least_common_drug_per_sample = pd.Series(pd.NA, index=res_all.index)
-for idx, row in res_all.iterrows():
-    for drug in drugs_sorted:
-        if not pd.isna(row[drug]):
-            least_common_drug_per_sample[idx] = drug
-            break
-
-RANDOM_SEED = 42
-# use this now to create the stratified train/val split
-train_idx, val_idx = train_test_split(
-    least_common_drug_per_sample.index,
-    test_size=0.2,
-    random_state=RANDOM_SEED,
-    stratify=least_common_drug_per_sample,
-)
-
-
 # %% ###################################################################
 
 
@@ -63,7 +51,7 @@ def one_hot_torch(seq: str, dtype=torch.int8):
     return arr
 
 
-class OneHotSeqsDataset(torch.utils.data.Dataset): #? what's the difference between using inheritance and not?
+class OneHotSeqsDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         seq_df,
@@ -86,10 +74,10 @@ class OneHotSeqsDataset(torch.utils.data.Dataset): #? what's the difference betw
         string index --> get sample with name `index`
         """
         if isinstance(index, int):
-            seqs_comb = self.seq_df.iloc[index].str.cat()
+            seqs_comb = self.seq_df.iloc[index].str.cat(sep='X'*30)
             res = self.res_df.iloc[index]
         elif isinstance(index, str):
-            seqs_comb = self.seq_df.loc[index].str.cat()
+            seqs_comb = self.seq_df.loc[index].str.cat(sep='X'*30)
             res = self.res_df.loc[index]
         else:
             raise ValueError(
@@ -101,17 +89,14 @@ class OneHotSeqsDataset(torch.utils.data.Dataset): #? what's the difference betw
         return self.res_df.shape[0]
 
 
-train_dataset = OneHotSeqsDataset(seqs_df.loc[train_idx], res_all.loc[train_idx], one_hot_dtype=torch.float)
-val_dataset = OneHotSeqsDataset(seqs_df.loc[val_idx], res_all.loc[val_idx], one_hot_dtype=torch.float)
-
-
+dataset = OneHotSeqsDataset(seqs_df, res_all, one_hot_dtype=torch.float)
 # %% ###################################################################
 
 
-def collate_padded_batch_old(batch):
-    padded_seqs = nn.utils.rnn.pad_sequence([x[0].T for x in batch], batch_first=True)
-    padded_batch = [(seq, x[1]) for seq, x in zip(padded_seqs, batch)]
-    return torch.utils.data.default_collate(padded_batch) #? what does the default_collate function do
+# def collate_padded_batch_old(batch):
+#     padded_seqs = nn.utils.rnn.pad_sequence([x[0].T for x in batch], batch_first=True)
+#     padded_batch = [(seq, x[1]) for seq, x in zip(padded_seqs, batch)]
+#     return torch.utils.data.default_collate(padded_batch)
 
 
 def collate_padded_batch(batch):
@@ -121,9 +106,11 @@ def collate_padded_batch(batch):
         [(F.pad(x[0], (0, max_len - x[0].shape[1])), x[1]) for x in batch] #how does F.pad work
     )
 
+
+loader = torch.utils.data.DataLoader(
+    dataset, batch_size=16, shuffle=True, collate_fn=collate_padded_batch
+)
 # %% ###################################################################
-
-
 class Model(nn.Module):
     def __init__(
         self,
@@ -198,12 +185,14 @@ class Model(nn.Module):
         return x
 
 
-m = Model(
-    num_classes=len(DRUGS),
-    num_dense_neurons=64,
-    num_dense_layers=4,
-    return_logits=True,
-).to(device)
+# m = Model(
+#     num_classes=len(DRUGS),
+#     num_dense_neurons=64,
+#     num_dense_layers=4,
+#     return_logits=True,
+# ).to(device)
+
+
 # %% ###################################################################
 
 
@@ -249,79 +238,55 @@ class AccumulatingMaskedAccuracy:
     def __repr__(self):
         return self.__str__()
 
-#%%
-# from torchviz import make_dot
-# x = torch.randn(1, 4, 56).to(device)
-# y = m(x)
-# make_dot(y, params=dict(list(m.named_parameters()))).render("cnn_torchviz", format="png")
 
 # %% ###################################################################
-# train now
 # get_model first
-num_filters=128
-num_conv_layers=0
-num_dense_neurons=64
-num_dense_layers=0
-return_logits=True
-conv_dropout_rate= 0
-step_size=10
-gamma=0.5
-N_epochs = 20
-batch_size = 16
-
-print(f'num_filters={num_filters} \n \
-    num_conv_layers={num_conv_layers=} \n \
-    num_dense_neurons={num_dense_neurons}\n \
-    num_dense_layers={num_dense_layers}\n \
-    return_logits={return_logits}\n \
-    conv_dropout_rate= {conv_dropout_rate}\n \
-    step_size={step_size}\n gamma={gamma}\n \
-    N_epochs = {N_epochs} \n batch_size={batch_size}')
-print('='*30)
-
 m = Model(
     num_classes=len(DRUGS),
-    num_filters=num_filters,
-    num_conv_layers=num_conv_layers,
-    num_dense_neurons=num_dense_neurons,
-    num_dense_layers=num_dense_layers,
-    return_logits=return_logits,
-    conv_dropout_rate= conv_dropout_rate
+    num_filters=128,
+    num_conv_layers=0,
+    num_dense_neurons=64,
+    num_dense_layers=0,
+    return_logits=True,
 ).to(device)
+
+# %% ###################################################################
+
+import torchsummary
+torchsummary.summary(m, (4, 50000))
+
+from torchviz import make_dot
+x = torch.randn(2, 4, 56).to(device)
+y = m(x)
+make_dot(y, params=dict(list(m.named_parameters()))).render("cnn_torchviz", format="png")
+# %% ###################################################################
+
+
 # hyperparameters
 optimizer = torch.optim.Adam(m.parameters(), lr=0.01, weight_decay=1e-5)
-#optimizer = torch.optim.SGD(m.parameters(), lr=0.01, momentum=0.3, dampening=0, weight_decay=0.3, nesterov=True, maximize=False, foreach=None)
-# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.6, patience=2, verbose=True)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
-N_epochs = N_epochs
+N_epochs = 20
 train_loss = []
-# loader = torch.utils.data.DataLoader(
-#     dataset,
-#     batch_size=128,
-#     shuffle=True,
-#     collate_fn=collate_padded_batch,
-#     num_workers=4,
-# )
-train_loader = torch.utils.data.DataLoader(
-    train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_padded_batch,num_workers=4)
+loader = torch.utils.data.DataLoader(
+    dataset,
+    batch_size=64,
+    shuffle=True,
+    collate_fn=collate_padded_batch,
+    num_workers=4,
+)
 
-val_loader = torch.utils.data.DataLoader(
-    val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_padded_batch,num_workers=4)
-
+# %% ###################################################################
 # training loop
-train_loss_per_epoch = []
-val_loss_per_epoch = []
-
+m.train()
+loss_per_epoch = []
 accs = []
 for epoch in range(N_epochs):
-    m.train()
     loss_per_batch = []
     acc = AccumulatingMaskedAccuracy(drugs=DRUGS, device=device)
-    for x_batch, y_batch in train_loader:
+    for x_batch, y_batch in loader:
         x_batch, y_batch = x_batch.to(device), y_batch.to(device)
         optimizer.zero_grad()
         y_pred_logits = m(x_batch)
-        loss = masked_BCE_from_logits(y_batch, y_pred_logits) #why are we not doing sigmoid before here
+        loss = masked_BCE_from_logits(y_batch, y_pred_logits)
         loss.backward()
         optimizer.step()
         print(f"batch loss={round(loss.item(), 4)}", end="\r")
@@ -330,30 +295,15 @@ for epoch in range(N_epochs):
         y_pred = torch.sigmoid(y_pred_logits)
         acc.update(y_batch, y_pred)
     epoch_loss = np.array(loss_per_batch).mean()
-    train_loss_per_epoch.append(epoch_loss)
+    loss_per_epoch.append(epoch_loss)
     accs.append(acc.values)
-    # scheduler.step()
-    print(f"epoch {epoch}: training loss={round(epoch_loss, 4)}")
+    print(f"epoch {epoch}: loss={round(epoch_loss, 4)}")
     print(acc)
-    m.eval()
-    loss_per_batch = []
-    for x_batch, y_batch in val_loader:
-        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-        y_pred_logits = m(x_batch)
-        loss = masked_BCE_from_logits(y_batch, y_pred_logits)
-        loss_per_batch.append(loss.item())
-    epoch_loss = np.array(loss_per_batch).mean()
-    val_loss_per_epoch.append(epoch_loss)
-    print(f"epoch {epoch}: validation loss={round(epoch_loss, 4)}")
     print('-----------------------')
-
-    
 # %% ###################################################################
 fig, ax = plt.subplots()
 x = np.arange(1, N_epochs+1, 1)
-ax.plot(x, train_loss_per_epoch, label='Training')
-ax.plot(x, val_loss_per_epoch, label='Validation')
-
+ax.plot(x, loss_per_epoch, label='Training')
 ax.legend()
 ax.set_xlabel("Number of Epoch")
 ax.set_ylabel("Loss")
@@ -362,10 +312,138 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
-fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_128f64n-s.png")
+fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_0c0d128f64n_d-sep.png")
 
 # %%
-torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_model_128f64n-20e-spe30')
+torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_model_0c0d128f64n_d-separator30.pth')
 
-# %% ###################################################################
- 
+# #%%
+# #model evaluation
+# missing_res = set(res_all.columns).difference(res_cryptic.columns)
+# miss_df = pd.DataFrame(columns=missing_res)
+# res_cryptic1 = pd.concat([res_cryptic, miss_df])
+# res_cryptic1 = res_cryptic1[res_all.columns]
+
+# #%%
+# #creating eval Dataloader
+# LOCI = seqs_cryptic.columns
+# DRUGS = res_all.columns
+
+# class OneHotSeqsDataset_val(torch.utils.data.Dataset):
+#     def __init__(
+#         self,
+#         seq_cryptic,
+#         res_cryptic,
+#         target_loci=LOCI,
+#         target_drugs=DRUGS,
+#         one_hot_dtype=torch.int8,
+#     ):
+#         self.seq_cryptic = seq_cryptic[target_loci]
+#         self.res_cryptic = res_cryptic[target_drugs]
+#         if not self.seq_cryptic.index.equals(self.res_cryptic.index):
+#             raise ValueError(
+#                 "Indices of sequence and resistance dataframes don't match up"
+#             )
+#         self.one_hot_dtype = one_hot_dtype
+
+#     def __getitem__(self, index):
+#         """
+#         numerical index --> get `index`-th sample
+#         string index --> get sample with name `index`
+#         """
+#         if isinstance(index, int):
+#             seqs_comb = self.seq_cryptic.iloc[index].str.cat()
+#             res = self.res_cryptic.iloc[index]
+#         elif isinstance(index, str):
+#             seqs_comb = self.seq_cryptic.loc[index].str.cat()
+#             res = self.res_cryptic.loc[index]
+#         else:
+#             raise ValueError(
+#                 "Index needs to be an integer or a sample name present in the dataset"
+#             )
+#         return one_hot_torch(seqs_comb, dtype=self.one_hot_dtype), torch.tensor(res)
+
+#     def __len__(self):
+#         return self.res_cryptic.shape[0]
+
+# dataset = OneHotSeqsDataset_val(seqs_cryptic, res_cryptic1, one_hot_dtype=torch.float)
+
+# loader = torch.utils.data.DataLoader(
+#     dataset, batch_size=16, shuffle=True, collate_fn=collate_padded_batch
+# )
+
+# #%%
+# device = 'cpu'
+
+# m = Model(
+#     num_classes=len(DRUGS),
+#     num_filters=128,
+#     num_conv_layers=2,
+#     num_dense_neurons=64,
+#     num_dense_layers=3,
+#     return_logits=True,
+# ).to(device)
+# m.load_state_dict(torch.load('/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_model.pth'))
+# m.eval()
+
+# # loss_per_epoch = []
+# # accs = []
+# preds = []
+# y_ = []
+
+# # for epoch in range(N_epochs):
+# #     loss_per_batch = []
+# # acc = AccumulatingMaskedAccuracy(drugs=DRUGS, device=device)
+# for x_batch, y_batch in tqdm(loader):
+#     x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+#     # optimizer.zero_grad()
+#     y_pred_logits = m(x_batch)
+#     # loss = masked_BCE_from_logits(y_batch, y_pred_logits)
+#     # loss.backward()
+#     # optimizer.step()
+#     # print(f"batch loss={round(loss.item(), 4)}", end="\r")
+#     # loss_per_batch.append(loss.item())
+#     # update accuracy metric
+#     y_pred = torch.sigmoid(y_pred_logits)
+#     preds.append(y_pred)
+#     y_.append(y_batch)
+#     # y_pred_array = y_pred.detach().cpu().numpy()
+#     # y_pred_array = y_pred_array.tolist()
+#     # y_batch_auc = y_batch.detach().cpu().numpy().tolist()
+#     # print(y_batch_auc)
+#     # preds.extend(y_pred_array)
+#     # acc.update(y_batch, y_pred)
+# # epoch_loss = np.array(loss_per_batch).mean()
+# # loss_per_epoch.append(epoch_loss)
+# # accs.append(acc.values)
+# # print(f"epoch {epoch}: loss={round(epoch_loss, 4)}")
+# # print(acc)
+# # print('-----------------------')
+
+# # %%
+# from torchmetrics import AUROC
+
+# def auc_func(preds, y_stack):
+#     res_index = [res_all.columns.tolist().index(x) for x in res_cryptic.columns.tolist()]
+#     dr_cryptic = ['ISONIAZID','RIFAMPICIN','ETHAMBUTOL','AMIKACIN','KANAMYCIN','MOXIFLOXACIN','LEVOFLOXACIN','ETHIONAMIDE']
+#     y_stack =  torch.cat(y_, dim=0)
+#     y_select =  y_stack[:, res_index]
+
+#     preds_stack = torch.cat(preds, dim=0)
+#     preds_select = preds_stack[:, res_index]
+#     auc_dict = {}
+#     for x in range(y_select.size()[1]):
+#         ic(x)
+#         no_nan = ~y_select[:,x].isnan()
+#         pred_masked = preds_select[:,x][no_nan].to(device)
+#         y_masked = y_select[:,x][no_nan].to(device)
+#         # ic(pred_masked, y_masked)
+#         # ic(len(pred_masked), len(y_masked))
+#         auroc = AUROC(pos_label=1)
+#         auc = auroc(pred_masked, y_masked.int())
+#         auc = auc.cpu().numpy().tolist()
+#         auc_dict[dr_cryptic[x]] = auc 
+#     return auc_dict
+
+# auc_dict = auc_func(preds, y_)
+# %%

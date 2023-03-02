@@ -18,7 +18,11 @@ torch.manual_seed(42)
 
 # %% ###################################################################
 # load training data
-seqs_df, res_all = util.load_data.get_main_dataset()
+# seqs_df, res_all = util.load_data.get_main_dataset()
+#! seting seq and res as the data with random added in
+seqs_df = pd.read_csv('/mnt/storageG1/lwang/TB-AMR-CNN/Julian/data/rand/seq_5percent_rand.csv')
+res_all = pd.read_csv('/mnt/storageG1/lwang/TB-AMR-CNN/Julian/data/rand/res_5percent_rand.csv')
+
 N_samples = seqs_df.shape[0]
 DRUGS = util.DRUGS
 LOCI = seqs_df.columns
@@ -266,8 +270,8 @@ return_logits=True
 conv_dropout_rate= 0
 step_size=10
 gamma=0.5
-N_epochs = 20
-batch_size = 16
+N_epochs = 100
+batch_size = 8
 
 print(f'num_filters={num_filters} \n \
     num_conv_layers={num_conv_layers=} \n \
@@ -289,7 +293,7 @@ m = Model(
     conv_dropout_rate= conv_dropout_rate
 ).to(device)
 # hyperparameters
-optimizer = torch.optim.Adam(m.parameters(), lr=0.01, weight_decay=1e-5)
+optimizer = torch.optim.Adam(m.parameters(), lr=0.0005, weight_decay=1e-5) 
 #optimizer = torch.optim.SGD(m.parameters(), lr=0.01, momentum=0.3, dampening=0, weight_decay=0.3, nesterov=True, maximize=False, foreach=None)
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.6, patience=2, verbose=True)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
@@ -331,7 +335,7 @@ for epoch in range(N_epochs):
         acc.update(y_batch, y_pred)
     epoch_loss = np.array(loss_per_batch).mean()
     train_loss_per_epoch.append(epoch_loss)
-    accs.append(acc.values)
+    # accs.append(acc.values)
     # scheduler.step()
     print(f"epoch {epoch}: training loss={round(epoch_loss, 4)}")
     print(acc)
@@ -362,10 +366,11 @@ ax.grid(axis="x")
 fig.tight_layout()
 fig.show()
 
+#%%
 fig.savefig("/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_128f64n-s.png")
 
 # %%
-torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_model_128f64n-20e-spe30')
+torch.save(m.state_dict(), '/mnt/storageG1/lwang/TB-AMR-CNN/Julian/training_torch_simple_mask_copy_split_model_128f64n-spe30-rand5-100e')
 
 # %% ###################################################################
  
