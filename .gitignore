@@ -150,5 +150,17 @@ docker_ohe/
 Julian/test
 *.csv
 /mnt/storageG1/lwang/TB-AMR-CNN/ml_workshop/data
+/mnt/storageG1/lwang/TB-AMR-CNN/Julian/test/merged-file
+
+*fastq.gz
+
+*.fasta
+*.fa
+*.fa.0123
+*.fa.amb
+*.fa.ann
+*.fa.bwt.2bit.64
+*.fa.pac
+*.pack
 
 # find . -type f -size +99M

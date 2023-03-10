@@ -19,7 +19,7 @@ import torchvision.transforms as transforms
 from itertools import chain
 from sklearn import metrics as met
 import pickle
-import icecream as ic
+# import icecream as ic
 
 import matplotlib.pyplot as plt
 import pathlib
@@ -36,18 +36,19 @@ import argparse
 
 #%%
 
-lr = 0.001
-dr = 0.2
+# lr = 0.001
+# dr = 0.2
+#%%
 
 parser = argparse.ArgumentParser(description='Ioniazid prediction model',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-lr", "--learning_rate", help='Learning rate for the model(between 10e-6 and 1)')
-parser.add_argument("-dr", "--dropout_rate", help='Dropout rate for hte model layers (between 0 and 1)')
+parser.add_argument("-lr", "--learning_rate", help='Learning rate for the model(between 10e-6 and 1)',default=0.001)
+parser.add_argument("-dr", "--dropout_rate", help='Dropout rate for hte model layers (between 0 and 1)',default=0.2)
 
 args = parser.parse_args()
 
 lr = float(args.learning_rate)
 dr = float(args.dropout_rate)
-
+#%%
 model_torch_simple = reload(model_torch_simple)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -155,6 +156,28 @@ def make_train_step(model, loss_fn, optimizer):
         return loss.item(), acc
         
     return train_step
+
+
+#%%
+# for x_batch, y_batch in train_loader:
+#     x_batch = my_padding(x_batch)
+#     x_batch = one_hot_torch(x_batch)
+#     x_batch = torch.stack(x_batch, dim=1).to(device)
+#     x_batch = x_batch.permute(1, 2, 0).to(device)
+#     print(x_batch.size())
+#     break
+#%%
+
+# from torchviz import make_dot
+# x = torch.randn(2, 4, 56).to(device)
+# m = model_torch_simple.raw_seq_model().to(device)
+# y = m(x)
+# make_dot(y, params=dict(list(m.named_parameters()))).render("cnn_torchviz", format="png")
+
+#%%
+
+
+
 
 model = model_torch_simple.raw_seq_model(dense_dropout_rate = dr).to(device) # model = nn.Sequential(nn.Linear(1, 1)).to(device)
 

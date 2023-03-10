@@ -89,6 +89,10 @@ val_data = pd.concat(val_frames, axis = 1)
 val_data = val_data.dropna()
 val_data = val_data.reset_index(drop=True)
 
+#%%
+val_data.to_csv('validation_data.csv')
+train_data.to_csv('training_data.csv')
+#%%
 seqs_cryptic_agg = val_data["KatG"].tolist()
 res_cryptic_combined = val_data["ISONIAZID"].tolist()
 
