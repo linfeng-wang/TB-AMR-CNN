@@ -1,7 +1,5 @@
 # TB-AMR-CNN
 
-Adapted from Julian's model
-
 Neural Network inspired by [MTB-CNN](https://github.com/aggreen/MTB-CNN) to
 predict antibiotic resistance in _M. tuberculosis_. The defining feature of this
 implementation is that it is fully independent of the input dimensions while
